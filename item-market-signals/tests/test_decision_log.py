@@ -22,6 +22,7 @@ from market_signals.decisions.log import (
     get_decision,
     load_decision_log,
     log_decision,
+    marked_outcome_for_decision,
     record_resale_outcome,
     recompute_saved_verdict,
 )
@@ -323,3 +324,230 @@ def test_lookup_distinguishes_missing_and_duplicated_decision_ids(tmp_path: Path
         get_decision("duplicated", log_path)
     with pytest.raises(DecisionNotFoundError, match="No decision found"):
         get_decision("missing", log_path)
+
+
+def test_marked_outcome_is_pending_before_target_date(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    log_path = tmp_path / "decision_log.csv"
+    _write_snapshot(snapshot_dir, "2026-09-01", [_row("Candy Cane", value=100)])
+    entry = log_decision(
+        "Candy Cane",
+        95.0,
+        False,
+        snapshot_dir=snapshot_dir,
+        log_path=log_path,
+        decision_timestamp=datetime(2026, 9, 1, 10, 0, tzinfo=timezone.utc),
+    )
+
+    outcome = marked_outcome_for_decision(
+        str(entry["decision_id"]),
+        log_path=log_path,
+        snapshot_dir=snapshot_dir,
+        as_of=date(2026, 9, 14),
+    )
+
+    assert outcome.status == "pending"
+    assert outcome.target_date == date(2026, 9, 15)
+    assert outcome.later_published_value is None
+
+
+def test_marked_outcome_uses_exact_14_day_snapshot_and_does_not_write_log(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    log_path = tmp_path / "decision_log.csv"
+    original_snapshot = _write_snapshot(snapshot_dir, "2026-09-01", [_row("Candy Cane", value=100)])
+    _write_snapshot(snapshot_dir, "2026-09-15", [_row("Candy Cane", value=125)])
+    entry = log_decision(
+        "Candy Cane",
+        95.0,
+        True,
+        purchase_price=90.0,
+        snapshot_path=original_snapshot,
+        snapshot_dir=snapshot_dir,
+        log_path=log_path,
+        decision_timestamp=datetime(2026, 9, 1, 10, 0, tzinfo=timezone.utc),
+    )
+    record_resale_outcome(
+        str(entry["decision_id"]),
+        130.0,
+        resale_date="2026-09-10",
+        log_path=log_path,
+    )
+    before = log_path.read_text()
+
+    outcome = marked_outcome_for_decision(
+        str(entry["decision_id"]),
+        log_path=log_path,
+        snapshot_dir=snapshot_dir,
+        as_of=date(2026, 9, 29),
+    )
+
+    assert log_path.read_text() == before
+    assert outcome.status == "ready"
+    assert outcome.original_published_value == pytest.approx(100)
+    assert outcome.later_published_value == pytest.approx(125)
+    assert outcome.percentage_change == pytest.approx(25)
+    assert outcome.actual_snapshot_date == date(2026, 9, 15)
+    assert outcome.days_elapsed == 14
+    assert outcome.actual_resale_price == pytest.approx(130)
+
+
+def test_cli_marked_outcome_labels_gpovalues_estimate_and_actual_resale_separately(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    log_path = tmp_path / "decision_log.csv"
+    original_snapshot = _write_snapshot(snapshot_dir, "2026-09-01", [_row("Candy Cane", value=100)])
+    _write_snapshot(snapshot_dir, "2026-09-15", [_row("Candy Cane", value=80)])
+    entry = log_decision(
+        "Candy Cane",
+        95.0,
+        True,
+        purchase_price=90.0,
+        snapshot_path=original_snapshot,
+        snapshot_dir=snapshot_dir,
+        log_path=log_path,
+        decision_timestamp=datetime(2026, 9, 1, 10, 0, tzinfo=timezone.utc),
+    )
+    record_resale_outcome(
+        str(entry["decision_id"]),
+        110.0,
+        resale_date="2026-09-10",
+        log_path=log_path,
+    )
+
+    result = RUNNER.invoke(
+        app,
+        [
+            "marked-outcome",
+            str(entry["decision_id"]),
+            "--log-path",
+            str(log_path),
+            "--snapshot-dir",
+            str(snapshot_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "14-day change in gpovalues' published estimate" in result.output
+    assert "not profit and not a completed trade" in result.output
+    assert "Estimate change" in result.output
+    assert "-20.0%" in result.output
+    assert "Actual resale" in result.output
+    assert "110 on 2026-09-10" in result.output
+
+
+def test_marked_outcome_uses_first_delayed_snapshot_with_same_identity(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    log_path = tmp_path / "decision_log.csv"
+    original_snapshot = _write_snapshot(snapshot_dir, "2026-09-01", [_row("Candy Cane", value=100)])
+    _write_snapshot(snapshot_dir, "2026-09-15", [_row("Different Item", value=999)])
+    _write_snapshot(snapshot_dir, "2026-09-17", [_row("Candy Cane", value=110)])
+    _write_snapshot(snapshot_dir, "2026-09-18", [_row("Candy Cane", value=130)])
+    entry = log_decision(
+        "Candy Cane",
+        95.0,
+        False,
+        snapshot_path=original_snapshot,
+        snapshot_dir=snapshot_dir,
+        log_path=log_path,
+        decision_timestamp=datetime(2026, 9, 1, 10, 0, tzinfo=timezone.utc),
+    )
+
+    outcome = marked_outcome_for_decision(
+        str(entry["decision_id"]),
+        log_path=log_path,
+        snapshot_dir=snapshot_dir,
+        as_of=date(2026, 9, 29),
+    )
+
+    assert outcome.status == "ready"
+    assert outcome.later_published_value == pytest.approx(110)
+    assert outcome.actual_snapshot_date == date(2026, 9, 17)
+    assert outcome.days_elapsed == 16
+
+
+def test_marked_outcome_reports_no_later_snapshot_when_item_is_missing(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    log_path = tmp_path / "decision_log.csv"
+    original_snapshot = _write_snapshot(snapshot_dir, "2026-09-01", [_row("Candy Cane", value=100)])
+    _write_snapshot(snapshot_dir, "2026-09-15", [_row("Different Item", value=999)])
+    entry = log_decision(
+        "Candy Cane",
+        95.0,
+        False,
+        snapshot_path=original_snapshot,
+        snapshot_dir=snapshot_dir,
+        log_path=log_path,
+        decision_timestamp=datetime(2026, 9, 1, 10, 0, tzinfo=timezone.utc),
+    )
+
+    outcome = marked_outcome_for_decision(
+        str(entry["decision_id"]),
+        log_path=log_path,
+        snapshot_dir=snapshot_dir,
+        as_of=date(2026, 9, 29),
+    )
+
+    assert outcome.status == "no later snapshot"
+    assert outcome.later_published_value is None
+
+
+def test_marked_outcome_rejects_duplicate_later_item_rows_as_unsuitable(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    log_path = tmp_path / "decision_log.csv"
+    original_snapshot = _write_snapshot(snapshot_dir, "2026-09-01", [_row("Candy Cane", value=100)])
+    _write_snapshot(
+        snapshot_dir,
+        "2026-09-15",
+        [
+            _row("Candy Cane", slug="candy-cane", value=110),
+            _row("Candy Cane", slug="candy-cane", value=120),
+        ],
+    )
+    entry = log_decision(
+        "Candy Cane",
+        95.0,
+        False,
+        snapshot_path=original_snapshot,
+        snapshot_dir=snapshot_dir,
+        log_path=log_path,
+        decision_timestamp=datetime(2026, 9, 1, 10, 0, tzinfo=timezone.utc),
+    )
+
+    outcome = marked_outcome_for_decision(
+        str(entry["decision_id"]),
+        log_path=log_path,
+        snapshot_dir=snapshot_dir,
+        as_of=date(2026, 9, 29),
+    )
+
+    assert outcome.status == "no later snapshot"
+    assert outcome.reason == "no later snapshot contains one matching item row"
+
+
+@pytest.mark.parametrize("original_value", [0, None])
+def test_marked_outcome_reports_zero_or_missing_original_values(tmp_path: Path, original_value: object) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    log_path = tmp_path / "decision_log.csv"
+    original_snapshot = _write_snapshot(snapshot_dir, "2026-09-01", [_row("Candy Cane", value=100)])
+    _write_snapshot(snapshot_dir, "2026-09-15", [_row("Candy Cane", value=125)])
+    entry = log_decision(
+        "Candy Cane",
+        95.0,
+        False,
+        snapshot_path=original_snapshot,
+        snapshot_dir=snapshot_dir,
+        log_path=log_path,
+        decision_timestamp=datetime(2026, 9, 1, 10, 0, tzinfo=timezone.utc),
+    )
+    log = load_decision_log(log_path)
+    log.loc[log["decision_id"] == entry["decision_id"], "published_value"] = original_value
+    log.to_csv(log_path, index=False)
+
+    outcome = marked_outcome_for_decision(
+        str(entry["decision_id"]),
+        log_path=log_path,
+        snapshot_dir=snapshot_dir,
+        as_of=date(2026, 9, 29),
+    )
+
+    assert outcome.status == "no original value"
+    assert outcome.percentage_change is None
