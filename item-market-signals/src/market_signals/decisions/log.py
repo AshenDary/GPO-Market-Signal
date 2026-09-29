@@ -8,7 +8,8 @@ market estimates with actual completed transactions.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -83,6 +84,26 @@ class ResaleWithoutPurchaseError(DecisionLogError):
 
 class PurchasePriceForNoBuyError(DecisionLogError):
     """Raised when a no-buy decision includes an actual purchase price."""
+
+
+@dataclass(frozen=True)
+class MarkedOutcome:
+    """Read-only 14-day gpovalues estimate change for one saved decision."""
+
+    status: str
+    decision_id: str
+    item_name: str
+    target_date: date
+    original_published_value: float | None
+    later_published_value: float | None = None
+    percentage_change: float | None = None
+    actual_snapshot_date: date | None = None
+    days_elapsed: int | None = None
+    snapshot_file: str = ""
+    identity_field: str = ""
+    actual_resale_date: str = ""
+    actual_resale_price: float | None = None
+    reason: str = ""
 
 
 def latest_gpovalues_snapshot(snapshot_dir: Path = SNAPSHOT_DIR) -> Path:
@@ -271,6 +292,77 @@ def get_decision(decision_id: str, log_path: Path = DECISION_LOG_PATH) -> pd.Ser
     return matches.iloc[0]
 
 
+def marked_outcome_for_decision(
+    decision_id: str,
+    *,
+    log_path: Path = DECISION_LOG_PATH,
+    snapshot_dir: Path = SNAPSHOT_DIR,
+    as_of: date | None = None,
+) -> MarkedOutcome:
+    """Calculate a read-only 14-day gpovalues published estimate outcome."""
+    row = get_decision(decision_id, log_path)
+    decision_day = _decision_date(row["decision_timestamp"])
+    target_date = decision_day + timedelta(days=14)
+    original_value = _optional_float(row.get("published_value"))
+    actual_resale_price = _optional_float(row.get("resale_price"))
+    actual_resale_date = "" if _is_blank(row.get("resale_date")) else str(row.get("resale_date"))
+
+    base = {
+        "decision_id": str(row["decision_id"]),
+        "item_name": _string_or_blank(row.get("item_name")),
+        "target_date": target_date,
+        "original_published_value": original_value,
+        "actual_resale_date": actual_resale_date,
+        "actual_resale_price": actual_resale_price,
+    }
+
+    today = as_of or date.today()
+    if target_date > today:
+        return MarkedOutcome(status="pending", reason="target date has not arrived", **base)
+    if original_value is None:
+        return MarkedOutcome(status="no original value", reason="saved decision has no original published value", **base)
+    if original_value == 0:
+        return MarkedOutcome(status="no original value", reason="saved original published value is zero", **base)
+
+    for snapshot_path in gpovalues_snapshots_on_or_after(target_date, snapshot_dir):
+        snapshot_date = date.fromisoformat(snapshot_date_from_path(snapshot_path))
+        snapshot = load_snapshot(snapshot_path, snapshot_dir)
+        match = _resolve_saved_identity(snapshot, row)
+        if match is None:
+            continue
+
+        matched_row, identity_field = match
+        later_value = _optional_float(matched_row.get("value"))
+        if later_value is None:
+            continue
+        pct_change = ((later_value - original_value) / original_value) * 100
+        return MarkedOutcome(
+            status="ready",
+            later_published_value=later_value,
+            percentage_change=pct_change,
+            actual_snapshot_date=snapshot_date,
+            days_elapsed=(snapshot_date - decision_day).days,
+            snapshot_file=snapshot_path.name,
+            identity_field=identity_field,
+            **base,
+        )
+
+    return MarkedOutcome(status="no later snapshot", reason="no later snapshot contains one matching item row", **base)
+
+
+def gpovalues_snapshots_on_or_after(target_date: date, snapshot_dir: Path = SNAPSHOT_DIR) -> list[Path]:
+    """Return dated gpovalues snapshots at or after target_date, sorted oldest first."""
+    snapshots: list[tuple[date, Path]] = []
+    for path in snapshot_dir.glob("gpovalues_*.csv"):
+        try:
+            snapshot_date = date.fromisoformat(snapshot_date_from_path(path))
+        except ValueError:
+            continue
+        if snapshot_date >= target_date:
+            snapshots.append((snapshot_date, path))
+    return [path for _, path in sorted(snapshots)]
+
+
 def record_resale_outcome(
     decision_id: str,
     resale_price: float,
@@ -320,6 +412,40 @@ def record_resale_outcome(
     log.at[idx, "resale_notes"] = resale_notes
     log.to_csv(log_path, index=False)
     return log.iloc[idx]
+
+
+def _resolve_saved_identity(snapshot: pd.DataFrame, decision: pd.Series) -> tuple[pd.Series, str] | None:
+    """Resolve the saved item in one snapshot by exact identity fields only."""
+    candidate_indices: set[int] = set()
+    matched_fields: list[str] = []
+
+    identity_specs = [
+        ("slug", "item_slug", False),
+        ("join_key", "join_key", False),
+        ("name", "item_name", True),
+        ("shortcut", "item_shortcut", True),
+    ]
+    for snapshot_column, decision_column, case_insensitive in identity_specs:
+        if snapshot_column not in snapshot.columns:
+            continue
+        saved_value = decision.get(decision_column)
+        if _is_blank(saved_value):
+            continue
+
+        snapshot_values = snapshot[snapshot_column]
+        if case_insensitive:
+            matches = snapshot_values.astype(str).str.lower().str.strip() == str(saved_value).lower().strip()
+        else:
+            matches = snapshot_values.astype(str).str.strip() == str(saved_value).strip()
+        indices = set(snapshot.index[matches].tolist())
+        if indices:
+            candidate_indices.update(indices)
+            matched_fields.append(snapshot_column)
+
+    if len(candidate_indices) != 1:
+        return None
+    idx = next(iter(candidate_indices))
+    return snapshot.loc[idx], "+".join(matched_fields)
 
 
 def _required_float(row: pd.Series | dict[str, object], field: str) -> float:

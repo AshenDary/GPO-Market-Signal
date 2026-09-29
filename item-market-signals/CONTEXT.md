@@ -14,6 +14,8 @@ turns the result into:
 
 - current fair-value lookup with confidence bands
 - asking-price verdicts: good deal, fair, slightly high, or overpriced
+- private saved-decision inspection with read-only 14-day gpovalues marked
+  outcomes
 - snapshot-based trend context
 - trade-side comparison through a simulator
 - structural value-model diagnostics, low-confidence estimates, and SHAP
@@ -85,6 +87,9 @@ item-market-signals/
         value_regression.py        structural value model, RF fallback, estimates, SHAP explanations
       evaluator/
         evaluate.py                Typer CLI for lookup/verdict/trend
+      decisions/
+        log.py                     private decision rows, resale updates, read-only marked outcomes
+        cli.py                     Typer commands for the private decision log
       utils/                       currently empty placeholder package
   tests/
     fixtures/                  trimmed real API/model fixtures
@@ -160,6 +165,12 @@ Current work is validation, packaging, and model-quality refinement:
   functions against fixtures, never the live gpovalues API.
 - **Unmatched/ambiguous items are flagged, never silently guessed.** Avoid fuzzy
   matching unless the output clearly marks it and the behavior is discussed.
+- **Marked outcomes are published-estimate changes, not profit.** The
+  decision-log marked outcome path uses the first snapshot on or after
+  decision date plus 14 days that contains one exact saved item identity match.
+  It does not overwrite `marked_value*` or resale fields, and it shows
+  `pending` or `no later snapshot` rather than substituting another item or
+  hiding the gap between target and actual snapshot dates.
 - **Snapshots are dated and never overwritten.** This is what makes historical
   trend analysis possible.
 - **Dashboard code is presentation-only.** Pages/components import package

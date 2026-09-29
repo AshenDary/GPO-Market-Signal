@@ -9,14 +9,16 @@ from typing import Optional
 import pandas as pd
 import typer
 
-from config.settings import DECISION_LOG_PATH
+from config.settings import DECISION_LOG_PATH, SNAPSHOT_DIR
 from market_signals.decisions.log import (
     AmbiguousItemMatchError,
     DecisionLogError,
+    MarkedOutcome,
     append_decision,
     build_decision_entry,
     get_decision,
     load_decision_log,
+    marked_outcome_for_decision,
     record_resale_outcome,
     recompute_saved_verdict,
 )
@@ -102,6 +104,26 @@ def show_command(
     typer.echo(_format_decision(row, reproduced))
 
 
+@app.command("marked-outcome")
+def marked_outcome_command(
+    decision_id: str = typer.Argument(..., help="Decision id to inspect."),
+    log_path: Path = typer.Option(DECISION_LOG_PATH, "--log-path", help="Private CSV log path."),
+    snapshot_dir: Path = typer.Option(SNAPSHOT_DIR, "--snapshot-dir", help="Directory containing gpovalues_YYYY-MM-DD.csv files."),
+) -> None:
+    """Show the 14-day gpovalues published-estimate change for one decision."""
+    try:
+        outcome = marked_outcome_for_decision(
+            decision_id,
+            log_path=log_path,
+            snapshot_dir=snapshot_dir,
+        )
+    except (DecisionLogError, FileNotFoundError, ValueError) as exc:
+        typer.echo(f"Could not inspect marked outcome: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(_format_marked_outcome(outcome))
+
+
 @app.command("record-resale")
 def record_resale_command(
     decision_id: str = typer.Argument(..., help="Decision id to update."),
@@ -158,6 +180,44 @@ def _format_decision(row: pd.Series, reproduced_verdict: str) -> str:
             f"  Actual resale      : {resale_price}",
         ]
     )
+
+
+def _format_marked_outcome(outcome: MarkedOutcome) -> str:
+    lines = [
+        f"Decision {outcome.decision_id}",
+        f"  Item                         : {outcome.item_name}",
+        "  Measure                      : 14-day change in gpovalues' published estimate",
+        "  Interpretation               : not profit and not a completed trade",
+        f"  Target date                  : {outcome.target_date.isoformat()}",
+        f"  Status                       : {outcome.status}",
+        f"  Original published estimate  : {_format_value(outcome.original_published_value)}",
+    ]
+    if outcome.status == "ready":
+        lines.extend(
+            [
+                f"  Later published estimate     : {_format_value(outcome.later_published_value)}",
+                f"  Estimate change              : {outcome.percentage_change:+.1f}%",
+                f"  Actual snapshot date         : {outcome.actual_snapshot_date.isoformat()}",
+                f"  Days elapsed                 : {outcome.days_elapsed}",
+                f"  Snapshot source              : {outcome.snapshot_file}",
+                f"  Identity match               : {outcome.identity_field}",
+            ]
+        )
+    elif outcome.reason:
+        lines.append(f"  Reason                       : {outcome.reason}")
+
+    if outcome.actual_resale_price is not None:
+        resale_date = outcome.actual_resale_date or "date not recorded"
+        lines.append(f"  Actual resale                : {_format_value(outcome.actual_resale_price)} on {resale_date}")
+    else:
+        lines.append("  Actual resale                : blank")
+    return "\n".join(lines)
+
+
+def _format_value(value: float | None) -> str:
+    if value is None:
+        return "blank"
+    return f"{value:,.0f}"
 
 
 def _is_blank(value: object) -> bool:

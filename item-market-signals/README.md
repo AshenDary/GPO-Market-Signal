@@ -16,8 +16,8 @@ estimates are labeled as model-derived, and uncertainty is shown plainly.
 - curated tier/rarity JSON parsing into dated `tier_reference_*.csv` snapshots
 - merged feature matrix using exact item-name match, then shortcut/alias match
 - Typer CLI for quick fair-value and asking-price checks
-- private local decision log for real buy/no-buy checks and actual resale
-  outcomes
+- private local decision log for real buy/no-buy checks, actual resale
+  outcomes, and read-only 14-day gpovalues marked outcomes
 - Streamlit dashboard with:
   - **Start Here** - dashboard directory and signal explanations
   - **Overview** - coverage, confidence counts, tier/value scatter, most-traded items
@@ -109,11 +109,22 @@ Inspect or update the private log:
 ```bash
 python scripts/run_decision_log.py list
 python scripts/run_decision_log.py show <decision_id>
+python scripts/run_decision_log.py marked-outcome <decision_id>
 python scripts/run_decision_log.py record-resale <decision_id> --resale-price 3100000 --resale-date 2026-10-10
 ```
 
 Resale fields are for actual completed sales only. Future marked gpovalues
 values are separate fields and should not be described as realized profit.
+
+The `marked-outcome` command is read-only. It calculates `decision_date + 14
+days`, then uses the first available `gpovalues_YYYY-MM-DD.csv` snapshot on or
+after that target date that contains exactly one saved item identity match. The
+output reports the original gpovalues published estimate, the later published
+estimate, percent change, target date, actual snapshot date, and days elapsed.
+If the target date has not arrived it shows `pending`; if no later snapshot has
+one unambiguous matching item, it shows `no later snapshot`. This is only a
+change in gpovalues' published estimate, not profit and not evidence that a
+trade was completed. Actual resale, when recorded, is displayed separately.
 
 ## Run the dashboard
 
