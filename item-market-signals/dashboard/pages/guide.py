@@ -38,6 +38,12 @@ directory = (
         ":material/show_chart:",
     ),
     (
+        "Historical Signal Lab",
+        "Compare simple past snapshot signals with later gpovalues published-estimate changes.",
+        "pages/historical_signal_lab.py",
+        ":material/science:",
+    ),
+    (
         "Value List",
         "Search the full available value catalog when you want to compare many items or discover a price range.",
         "pages/value_list.py",
@@ -92,6 +98,14 @@ read as directional rather than exact.
 Trend compares item value across dated snapshots. It only appears when there
 are multiple snapshot dates, so some items may still show "not enough snapshot
 history yet" while data continues to accumulate.
+
+### Historical Signal Lab
+
+Historical Signal Lab evaluates simple item-date signals from past gpovalues
+snapshots: prior 7-day published-value change, prior 7-day demand-ratio
+change when both ratios are valid, and confidence category on the evaluation
+date. Outcomes are the same item's later gpovalues published estimate about
+14 days later, not resale profit, asking-price verdicts, or completed trades.
 
 ### Coverage limits
 

@@ -5,6 +5,10 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from market_signals.analysis.historical_signal_lab import (
+    HistoricalSignalResult,
+    run_historical_signal_lab,
+)
 from market_signals.features.build_feature_matrix import build_feature_matrix
 from market_signals.models.trend_model import load_snapshot_history, most_traded
 from market_signals.models.value_regression import (
@@ -27,6 +31,12 @@ def load_feature_matrix() -> pd.DataFrame:
 def load_history() -> pd.DataFrame:
     """Load all gpovalues snapshots for trend views."""
     return load_snapshot_history()
+
+
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
+def load_historical_signal_lab() -> HistoricalSignalResult:
+    """Run the historical signal lab from raw gpovalues snapshots."""
+    return run_historical_signal_lab()
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
