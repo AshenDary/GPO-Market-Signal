@@ -60,7 +60,7 @@ def test_prior_signals_use_exact_past_snapshot_without_future_leakage(tmp_path: 
     _write_snapshot(snapshot_dir, "2026-09-10", [_row("Candy Cane", value=999, demand_ratio=9.9)])
     _write_snapshot(snapshot_dir, "2026-09-22", [_row("Candy Cane", value=121, demand_ratio=2.0)])
 
-    result = run_historical_signal_lab(snapshot_dir)
+    result = run_historical_signal_lab(snapshot_dir, as_of=pd.Timestamp("2026-09-25").date())
     row = _observation(result, "2026-09-08", "Candy Cane")
 
     assert row["prior_date"] == "2026-09-01"
@@ -84,7 +84,7 @@ def test_duplicate_later_item_rows_are_not_used_as_outcomes(tmp_path: Path) -> N
         ],
     )
 
-    result = run_historical_signal_lab(snapshot_dir)
+    result = run_historical_signal_lab(snapshot_dir, as_of=pd.Timestamp("2026-09-25").date())
     row = _observation(result, "2026-09-08", "Candy Cane")
 
     assert row["outcome_status"] == "duplicate_item"
@@ -152,6 +152,75 @@ def test_delayed_outcomes_use_first_snapshot_within_max_delay(tmp_path: Path) ->
     assert row["outcome_change_pct"] == pytest.approx(50)
 
 
+def test_future_target_dates_are_pending(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(snapshot_dir, "2026-09-01", [_row("Candy Cane", value=100)])
+    _write_snapshot(snapshot_dir, "2026-09-08", [_row("Candy Cane", value=110)])
+
+    result = run_historical_signal_lab(snapshot_dir, as_of=pd.Timestamp("2026-09-21").date())
+    row = _observation(result, "2026-09-08", "Candy Cane")
+
+    assert row["target_date"] == "2026-09-22"
+    assert row["outcome_status"] == "pending"
+    assert result.metadata["pending_outcome_count"] == 1
+
+
+def test_target_day_without_valid_outcome_awaits_window_completion(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(snapshot_dir, "2026-09-01", [_row("Candy Cane", value=100)])
+    _write_snapshot(snapshot_dir, "2026-09-08", [_row("Candy Cane", value=110)])
+    _write_snapshot(snapshot_dir, "2026-09-22", [_row("Different Item", value=999)])
+
+    result = run_historical_signal_lab(snapshot_dir, as_of=pd.Timestamp("2026-09-22").date())
+    row = _observation(result, "2026-09-08", "Candy Cane")
+
+    assert row["target_date"] == "2026-09-22"
+    assert row["outcome_status"] == "awaiting_window"
+    assert result.metadata["awaiting_window_count"] == 1
+
+
+def test_target_day_valid_outcome_is_ready_even_before_window_completion(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(snapshot_dir, "2026-09-01", [_row("Candy Cane", value=100)])
+    _write_snapshot(snapshot_dir, "2026-09-08", [_row("Candy Cane", value=110)])
+    _write_snapshot(snapshot_dir, "2026-09-22", [_row("Candy Cane", value=121)])
+
+    result = run_historical_signal_lab(snapshot_dir, as_of=pd.Timestamp("2026-09-22").date())
+    row = _observation(result, "2026-09-08", "Candy Cane")
+
+    assert row["outcome_status"] == "ready"
+    assert row["actual_outcome_date"] == "2026-09-22"
+    assert row["elapsed_days"] == 14
+    assert row["outcome_change_pct"] == pytest.approx(10)
+
+
+def test_partial_window_before_target_plus_three_awaits_more_data(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(snapshot_dir, "2026-09-01", [_row("Candy Cane", value=100)])
+    _write_snapshot(snapshot_dir, "2026-09-08", [_row("Candy Cane", value=110)])
+    _write_snapshot(snapshot_dir, "2026-09-24", [_row("Different Item", value=999)])
+
+    result = run_historical_signal_lab(snapshot_dir, as_of=pd.Timestamp("2026-09-24").date())
+    row = _observation(result, "2026-09-08", "Candy Cane")
+
+    assert row["outcome_status"] == "awaiting_window"
+    assert pd.isna(row["actual_outcome_date"])
+
+
+def test_target_plus_three_without_valid_outcome_is_confirmed_missing(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(snapshot_dir, "2026-09-01", [_row("Candy Cane", value=100)])
+    _write_snapshot(snapshot_dir, "2026-09-08", [_row("Candy Cane", value=110)])
+    _write_snapshot(snapshot_dir, "2026-09-15", [_row("Candy Cane", value=105)])
+    _write_snapshot(snapshot_dir, "2026-09-25", [_row("Different Item", value=999)])
+
+    result = run_historical_signal_lab(snapshot_dir, as_of=pd.Timestamp("2026-09-25").date())
+    row = _observation(result, "2026-09-08", "Candy Cane")
+
+    assert row["outcome_status"] == "missing_item"
+    assert result.metadata["confirmed_missing_outcome_count"] == 1
+
+
 def test_outcomes_after_max_delay_are_reported_missing(tmp_path: Path) -> None:
     snapshot_dir = tmp_path / "snapshots"
     _write_snapshot(snapshot_dir, "2026-09-01", [_row("Candy Cane", value=100)])
@@ -163,6 +232,20 @@ def test_outcomes_after_max_delay_are_reported_missing(tmp_path: Path) -> None:
 
     assert row["outcome_status"] == "no_snapshot_in_window"
     assert pd.isna(row["actual_outcome_date"])
+
+
+def test_default_as_of_uses_latest_snapshot_for_stale_snapshot_directory(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(snapshot_dir, "2026-09-01", [_row("Candy Cane", value=100)])
+    _write_snapshot(snapshot_dir, "2026-09-08", [_row("Candy Cane", value=110)])
+    _write_snapshot(snapshot_dir, "2026-09-20", [_row("Candy Cane", value=115)])
+
+    result = run_historical_signal_lab(snapshot_dir)
+    row = _observation(result, "2026-09-08", "Candy Cane")
+
+    assert result.metadata["as_of_date"] == "2026-09-20"
+    assert row["target_date"] == "2026-09-22"
+    assert row["outcome_status"] == "pending"
 
 
 def test_zero_evaluation_values_are_explicit_and_excluded_from_baseline(tmp_path: Path) -> None:

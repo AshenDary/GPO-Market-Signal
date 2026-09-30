@@ -217,14 +217,19 @@ Historical Signal Lab is exploratory. For each evaluation snapshot it computes:
   only when both ratios are numeric
 - the gpovalues confidence category on the evaluation date
 
-The 14-day outcome target is `evaluation_date + 14 days`. The analyzer searches
-from that target date through three days later and uses the first snapshot that
+The 14-day outcome target is `evaluation_date + 14 days`. By default, the
+analysis uses the latest available gpovalues snapshot date as its `as_of` date,
+so a report generated from the same files remains reproducible. It searches
+from the target date through three days later and uses the first snapshot that
 contains exactly one row for the same item identity. Item identity is the
 gpovalues `slug` when present, falling back to `join_key` and then exact item
-name. Missing snapshots, missing items, duplicate item identities, invalid
-values, and zero values are surfaced as statuses instead of being silently
-filled. Summaries compare each signal group with all eligible item-date
-observations on the same evaluation dates.
+name. Targets after the `as_of` date are `pending`; targets that have arrived
+but whose target-through-target-plus-three-day window is not complete are
+`awaiting_window` unless a valid outcome has already been found. Completed
+windows with missing snapshots, missing items, duplicate item identities,
+invalid values, or zero values are surfaced as confirmed missing statuses
+instead of being silently filled. Summaries compare each signal group with all
+eligible item-date observations on the same evaluation dates.
 
 Do not read the Historical Signal Lab as a trading backtest. It has no
 historical seller asking prices, does not use the asking-price verdict, and

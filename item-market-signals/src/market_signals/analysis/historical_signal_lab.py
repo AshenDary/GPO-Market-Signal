@@ -44,6 +44,7 @@ def run_historical_signal_lab(
     prior_signal_days: int = PRIOR_SIGNAL_DAYS,
     outcome_days: int = OUTCOME_DAYS,
     max_outcome_delay_days: int = MAX_OUTCOME_DELAY_DAYS,
+    as_of: date | None = None,
 ) -> HistoricalSignalResult:
     """Evaluate simple historical signals against later published estimates."""
     if prior_signal_days <= 0:
@@ -54,25 +55,30 @@ def run_historical_signal_lab(
         raise ValueError("max_outcome_delay_days cannot be negative.")
 
     snapshots = load_gpovalues_snapshots(snapshot_dir)
+    snapshot_dates = [snap.snapshot_date for snap in snapshots]
+    effective_as_of = as_of or max(snapshot_dates)
     observations = build_signal_observations(
         snapshots,
         prior_signal_days=prior_signal_days,
         outcome_days=outcome_days,
         max_outcome_delay_days=max_outcome_delay_days,
+        as_of=effective_as_of,
     )
     summary = summarize_signal_groups(observations)
-    snapshot_dates = [snap.snapshot_date for snap in snapshots]
     metadata = {
         "snapshot_count": len(snapshots),
         "first_snapshot_date": min(snapshot_dates).isoformat(),
         "last_snapshot_date": max(snapshot_dates).isoformat(),
+        "as_of_date": effective_as_of.isoformat(),
         "prior_signal_days": prior_signal_days,
         "outcome_days": outcome_days,
         "max_outcome_delay_days": max_outcome_delay_days,
         "observation_count": int(len(observations)),
         "eligible_observation_count": int((observations["evaluation_status"] == "eligible").sum()),
         "ready_outcome_count": int((observations["outcome_status"] == "ready").sum()),
-        "missing_outcome_count": int((observations["outcome_status"] != "ready").sum()),
+        "pending_outcome_count": int((observations["outcome_status"] == "pending").sum()),
+        "awaiting_window_count": int((observations["outcome_status"] == "awaiting_window").sum()),
+        "confirmed_missing_outcome_count": int(_confirmed_missing_mask(observations).sum()),
     }
     return HistoricalSignalResult(observations=observations, summary=summary, metadata=metadata)
 
@@ -97,9 +103,11 @@ def build_signal_observations(
     prior_signal_days: int = PRIOR_SIGNAL_DAYS,
     outcome_days: int = OUTCOME_DAYS,
     max_outcome_delay_days: int = MAX_OUTCOME_DELAY_DAYS,
+    as_of: date | None = None,
 ) -> pd.DataFrame:
     """Build one item-date observation per row in each evaluation snapshot."""
     snapshots_by_date = {snapshot.snapshot_date: snapshot for snapshot in snapshots}
+    effective_as_of = as_of or max(snapshot.snapshot_date for snapshot in snapshots)
     records: list[dict[str, object]] = []
 
     for evaluation_snapshot in snapshots:
@@ -119,6 +127,7 @@ def build_signal_observations(
                     snapshots,
                     outcome_days=outcome_days,
                     max_outcome_delay_days=max_outcome_delay_days,
+                    as_of=effective_as_of,
                 )
             else:
                 record["outcome_status"] = "not_evaluated"
@@ -270,6 +279,7 @@ def _attach_outcome(
     *,
     outcome_days: int,
     max_outcome_delay_days: int,
+    as_of: date,
 ) -> None:
     evaluation_date = date.fromisoformat(str(record["evaluation_date"]))
     target_date = evaluation_date + timedelta(days=outcome_days)
@@ -277,15 +287,16 @@ def _attach_outcome(
     identity = str(evaluation_row["item_identity"])
     original_value = _optional_float(evaluation_row.get("value"))
 
+    if target_date > as_of:
+        record["outcome_status"] = "pending"
+        record["outcome_note"] = f"target date {target_date.isoformat()} is after as-of date {as_of.isoformat()}"
+        return
+
     candidates = [
         snapshot
         for snapshot in snapshots
-        if target_date <= snapshot.snapshot_date <= latest_allowed_date
+        if target_date <= snapshot.snapshot_date <= min(latest_allowed_date, as_of)
     ]
-    if not candidates:
-        record["outcome_status"] = "no_snapshot_in_window"
-        record["outcome_note"] = f"no snapshot from {target_date.isoformat()} through {latest_allowed_date.isoformat()}"
-        return
 
     first_failure = ""
     for snapshot in candidates:
@@ -311,8 +322,21 @@ def _attach_outcome(
         record["outcome_status"] = "ready"
         return
 
-    record["outcome_status"] = first_failure or "no_later_snapshot"
-    record["outcome_note"] = "no unambiguous valid item outcome inside the allowed window"
+    if as_of < latest_allowed_date:
+        record["outcome_status"] = "awaiting_window"
+        record["outcome_note"] = (
+            f"target arrived, but data only covers through {as_of.isoformat()}; "
+            f"window completes on {latest_allowed_date.isoformat()}"
+        )
+        return
+
+    if not candidates:
+        record["outcome_status"] = "no_snapshot_in_window"
+        record["outcome_note"] = f"no snapshot from {target_date.isoformat()} through {latest_allowed_date.isoformat()}"
+        return
+
+    record["outcome_status"] = first_failure or "no_valid_outcome"
+    record["outcome_note"] = "no unambiguous valid item outcome inside the completed window"
 
 
 def _mark_missing_signals(record: dict[str, object], note: str) -> None:
@@ -337,6 +361,7 @@ def _summarize_rows(signal: str, group: str, cohort: str, rows: pd.DataFrame) ->
     positive_pct = None
     if len(ready) > 0:
         positive_pct = (ready["outcome_change_pct"] > 0).mean() * 100
+    confirmed_missing = int(_confirmed_missing_mask(rows).sum())
 
     return {
         "signal": signal,
@@ -344,12 +369,21 @@ def _summarize_rows(signal: str, group: str, cohort: str, rows: pd.DataFrame) ->
         "cohort": cohort,
         "observations": int(len(rows)),
         "unique_items": int(rows["item_identity"].nunique()),
-        "missing_outcome_count": int((rows["outcome_status"] != "ready").sum()),
         "outcome_observations": int(len(ready)),
+        "pending_outcome_count": int((rows["outcome_status"] == "pending").sum()),
+        "awaiting_window_count": int((rows["outcome_status"] == "awaiting_window").sum()),
+        "confirmed_missing_outcome_count": confirmed_missing,
         "mean_later_published_value_change_pct": _rounded_or_none(ready["outcome_change_pct"].mean()),
         "median_later_published_value_change_pct": _rounded_or_none(ready["outcome_change_pct"].median()),
         "positive_change_pct": _rounded_or_none(positive_pct),
     }
+
+
+def _confirmed_missing_mask(rows: pd.DataFrame) -> pd.Series:
+    """Rows whose outcome window is complete but lacks a valid outcome."""
+    if "outcome_status" not in rows.columns:
+        return pd.Series(False, index=rows.index)
+    return ~rows["outcome_status"].isin(["ready", "pending", "awaiting_window", "not_evaluated"])
 
 
 def _identity_key(row: pd.Series) -> str:
@@ -466,8 +500,10 @@ def _empty_summary() -> pd.DataFrame:
         "cohort",
         "observations",
         "unique_items",
-        "missing_outcome_count",
         "outcome_observations",
+        "pending_outcome_count",
+        "awaiting_window_count",
+        "confirmed_missing_outcome_count",
         "mean_later_published_value_change_pct",
         "median_later_published_value_change_pct",
         "positive_change_pct",

@@ -1182,6 +1182,9 @@ def render_historical_signal_lab(result: HistoricalSignalResult) -> None:
             ("Snapshots", f"{int(metadata['snapshot_count']):,}"),
             ("Item-date observations", f"{int(metadata['observation_count']):,}"),
             ("Ready outcomes", f"{int(metadata['ready_outcome_count']):,}"),
+            ("Pending targets", f"{int(metadata['pending_outcome_count']):,}"),
+            ("Awaiting window", f"{int(metadata['awaiting_window_count']):,}"),
+            ("Confirmed missing", f"{int(metadata['confirmed_missing_outcome_count']):,}"),
         ],
         class_name="metric-grid--three",
     )
@@ -1193,6 +1196,10 @@ def render_historical_signal_lab(result: HistoricalSignalResult) -> None:
         "Signals use raw gpovalues snapshots only. The 14-day outcome accepts the first "
         f"unambiguous same-item snapshot within {metadata['max_outcome_delay_days']} day(s) "
         "after the target date."
+    )
+    _notice(
+        "Repeated daily rows for the same item are correlated item-date observations, "
+        "not independent trades."
     )
 
     if observations.empty:
@@ -1210,6 +1217,12 @@ def render_historical_signal_lab(result: HistoricalSignalResult) -> None:
         use_container_width=True,
         hide_index=True,
         column_config={
+            "observations": st.column_config.NumberColumn("Rows", format="localized"),
+            "unique_items": st.column_config.NumberColumn("Unique items", format="localized"),
+            "outcome_observations": st.column_config.NumberColumn("Ready outcomes", format="localized"),
+            "pending_outcome_count": st.column_config.NumberColumn("Pending", format="localized"),
+            "awaiting_window_count": st.column_config.NumberColumn("Awaiting window", format="localized"),
+            "confirmed_missing_outcome_count": st.column_config.NumberColumn("Confirmed missing", format="localized"),
             "mean_later_published_value_change_pct": st.column_config.NumberColumn("Mean change %", format="%.2f"),
             "median_later_published_value_change_pct": st.column_config.NumberColumn("Median change %", format="%.2f"),
             "positive_change_pct": st.column_config.NumberColumn("Positive %", format="%.2f"),

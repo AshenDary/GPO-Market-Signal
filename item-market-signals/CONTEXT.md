@@ -184,8 +184,12 @@ Current work is validation, packaging, and model-quality refinement:
   Prior value change requires the same item exactly seven calendar days
   earlier. Demand-ratio change is an absolute ratio delta and is shown only
   when both ratios are numeric. Outcomes target 14 calendar days later and may
-  use the first exact same-item snapshot up to three days after target; beyond
-  that, the outcome is missing. Repeated daily rows are item-date observations,
+  use the first exact same-item snapshot up to three days after target. The
+  default `as_of` date is the latest available gpovalues snapshot, making file-
+  backed reports reproducible. Future targets are `pending`; arrived targets
+  with an incomplete three-day outcome window are `awaiting_window` unless a
+  valid outcome is already found; completed windows without a valid outcome are
+  confirmed missing. Repeated daily rows are correlated item-date observations,
   not independent trades.
 - **Snapshots are dated and never overwritten.** This is what makes historical
   trend analysis possible.
