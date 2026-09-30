@@ -15,6 +15,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from dashboard.components.layout import render_metric_cards
+from market_signals.analysis.historical_signal_lab import HistoricalSignalResult
 from market_signals.evaluator.evaluate import (
     find_item_matches,
     resolve_item,
@@ -1167,3 +1168,120 @@ def render_trend(df: pd.DataFrame, history: pd.DataFrame | None) -> None:
         return
 
     _render_item_trend_chart(row, history)
+
+
+def render_historical_signal_lab(result: HistoricalSignalResult) -> None:
+    """Render exploratory signal cohorts built only from historical snapshots."""
+    _section_title("Historical Signal Lab")
+    metadata = result.metadata
+    observations = result.observations.copy()
+    summary = result.summary.copy()
+
+    render_metric_cards(
+        [
+            ("Snapshots", f"{int(metadata['snapshot_count']):,}"),
+            ("Item-date observations", f"{int(metadata['observation_count']):,}"),
+            ("Ready outcomes", f"{int(metadata['ready_outcome_count']):,}"),
+        ],
+        class_name="metric-grid--three",
+    )
+    _notice(
+        "Exploratory only: outcomes are changes in gpovalues' published estimates, "
+        "not realized returns, profit, or completed trades."
+    )
+    _notice(
+        "Signals use raw gpovalues snapshots only. The 14-day outcome accepts the first "
+        f"unambiguous same-item snapshot within {metadata['max_outcome_delay_days']} day(s) "
+        "after the target date."
+    )
+
+    if observations.empty:
+        _notice("No historical snapshot observations are available.")
+        return
+
+    _section_title("Signal group summaries")
+    signal_options = ["All", *sorted(summary["signal"].dropna().unique())] if not summary.empty else ["All"]
+    selected_signal = st.selectbox("Signal", signal_options, key="historical_signal_summary_signal")
+    filtered_summary = summary
+    if selected_signal != "All":
+        filtered_summary = filtered_summary[filtered_summary["signal"] == selected_signal]
+    st.dataframe(
+        filtered_summary,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "mean_later_published_value_change_pct": st.column_config.NumberColumn("Mean change %", format="%.2f"),
+            "median_later_published_value_change_pct": st.column_config.NumberColumn("Median change %", format="%.2f"),
+            "positive_change_pct": st.column_config.NumberColumn("Positive %", format="%.2f"),
+        },
+    )
+
+    _section_title("Item-date observations")
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        signal_group = st.selectbox(
+            "Value signal group",
+            ["All", *sorted(observations["prior_7d_value_change_group"].dropna().unique())],
+            key="historical_signal_value_group",
+        )
+    with col_b:
+        outcome_status = st.selectbox(
+            "Outcome status",
+            ["All", *sorted(observations["outcome_status"].dropna().unique())],
+            key="historical_signal_outcome_status",
+        )
+    with col_c:
+        outcome_direction = st.selectbox(
+            "Outcome direction",
+            ["All", *sorted(observations["outcome_direction"].dropna().unique())],
+            key="historical_signal_outcome_direction",
+        )
+
+    table = observations
+    if signal_group != "All":
+        table = table[table["prior_7d_value_change_group"] == signal_group]
+    if outcome_status != "All":
+        table = table[table["outcome_status"] == outcome_status]
+    if outcome_direction != "All":
+        table = table[table["outcome_direction"] == outcome_direction]
+
+    item_filter = st.text_input("Filter item name", key="historical_signal_item_filter")
+    if item_filter.strip():
+        table = table[table["item_name"].str.contains(item_filter.strip(), case=False, na=False, regex=False)]
+
+    display_columns = [
+        "evaluation_date",
+        "item_name",
+        "item_identity",
+        "evaluation_value",
+        "prior_value",
+        "prior_7d_value_change_pct",
+        "evaluation_demand_ratio",
+        "prior_demand_ratio",
+        "prior_7d_demand_ratio_change",
+        "confidence_category",
+        "target_date",
+        "actual_outcome_date",
+        "elapsed_days",
+        "later_published_value",
+        "outcome_change_pct",
+        "outcome_status",
+        "outcome_direction",
+        "signal_note",
+        "outcome_note",
+    ]
+    st.dataframe(
+        table[display_columns].sort_values(["evaluation_date", "item_name"]),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "evaluation_value": st.column_config.NumberColumn("Evaluation value", format="%.0f"),
+            "prior_value": st.column_config.NumberColumn("Prior value", format="%.0f"),
+            "prior_7d_value_change_pct": st.column_config.NumberColumn("Prior value change %", format="%.2f"),
+            "evaluation_demand_ratio": st.column_config.NumberColumn("Eval demand ratio", format="%.3f"),
+            "prior_demand_ratio": st.column_config.NumberColumn("Prior demand ratio", format="%.3f"),
+            "prior_7d_demand_ratio_change": st.column_config.NumberColumn("Demand-ratio change", format="%.3f"),
+            "later_published_value": st.column_config.NumberColumn("Later value", format="%.0f"),
+            "outcome_change_pct": st.column_config.NumberColumn("Outcome change %", format="%.2f"),
+        },
+    )

@@ -17,6 +17,7 @@ turns the result into:
 - private saved-decision inspection with read-only 14-day gpovalues marked
   outcomes
 - snapshot-based trend context
+- exploratory historical signal evaluation from raw gpovalues snapshots
 - trade-side comparison through a simulator
 - structural value-model diagnostics, low-confidence estimates, and SHAP
   explanations for the value regression model
@@ -56,6 +57,7 @@ item-market-signals/
       simulator.py              two-sided trade simulator with dialog-based item add flow
       model_insights.py         value regression diagnostics, anomalies, SHAP explanations
       trend.py                  per-item snapshot trend chart
+      historical_signal_lab.py  simple historical signal cohorts and same-date baselines
       value_list.py             searchable full gpovalues catalog
     components/
       data.py                   cached Streamlit loaders; model uses st.cache_resource
@@ -77,6 +79,8 @@ item-market-signals/
   src/
     config/settings.py          paths, API URL/user-agent, ordinal encodings
     market_signals/
+      analysis/
+        historical_signal_lab.py raw-snapshot historical signal evaluation
       ingest/
         pull_gpovalues_snapshot.py fetch live API, flatten payload, write dated snapshot
         parse_tier_dataset.py      flatten tier JSON, derive structural columns, write dated snapshot
@@ -104,11 +108,14 @@ Data flow:
    item name, then gpovalues shortcut vs tier alias. Unmatched gpovalues rows
    are kept and flagged.
 4. `trend_model.py` reads all gpovalues snapshots for historical movement.
-5. `value_regression.py` trains on medium/high-confidence rows, predicts
+5. `historical_signal_lab.py` uses only raw dated gpovalues snapshots to
+   evaluate prior 7-day value movement, prior 7-day demand-ratio movement, and
+   confidence categories against later published estimates.
+6. `value_regression.py` trains on medium/high-confidence rows, predicts
    `log(value)`, converts final predictions back with `exp`, and uses SHAP
    TreeExplainer on the selected RandomForestRegressor to explain model
    predictions in log-space.
-6. The CLI and Streamlit dashboard reuse these package modules instead of
+7. The CLI and Streamlit dashboard reuse these package modules instead of
    duplicating parsing, matching, trend, or verdict logic.
 
 The repository contains accumulated dated snapshots under `data/snapshots/`.
@@ -136,7 +143,7 @@ the hosting environment.
 The core product is built and usable on `main`: ingestion, feature merging,
 CLI evaluator, dashboard, trend views, Value List, footer/navigation polish,
 Trade Simulator, structural value regression, model-derived estimates, anomaly
-diagnostics, and SHAP explainability are implemented.
+diagnostics, Historical Signal Lab, and SHAP explainability are implemented.
 
 Current work is validation, packaging, and model-quality refinement:
 
@@ -171,6 +178,15 @@ Current work is validation, packaging, and model-quality refinement:
   It does not overwrite `marked_value*` or resale fields, and it shows
   `pending` or `no later snapshot` rather than substituting another item or
   hiding the gap between target and actual snapshot dates.
+- **Historical Signal Lab is exploratory signal evaluation, not a trading
+  backtest.** It reads raw `gpovalues_*.csv` snapshots only, never the private
+  decision log and never the latest merged feature matrix for past features.
+  Prior value change requires the same item exactly seven calendar days
+  earlier. Demand-ratio change is an absolute ratio delta and is shown only
+  when both ratios are numeric. Outcomes target 14 calendar days later and may
+  use the first exact same-item snapshot up to three days after target; beyond
+  that, the outcome is missing. Repeated daily rows are item-date observations,
+  not independent trades.
 - **Snapshots are dated and never overwritten.** This is what makes historical
   trend analysis possible.
 - **Dashboard code is presentation-only.** Pages/components import package
