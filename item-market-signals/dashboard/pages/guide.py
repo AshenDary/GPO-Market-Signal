@@ -38,6 +38,12 @@ directory = (
         ":material/show_chart:",
     ),
     (
+        "Market Change Alerts",
+        "Review latest snapshot items whose value, demand ratio, or activity signal moved unusually.",
+        "pages/market_change_alerts.py",
+        ":material/notification_important:",
+    ),
+    (
         "Historical Signal Lab",
         "Compare simple past snapshot signals with later gpovalues published-estimate changes.",
         "pages/historical_signal_lab.py",
@@ -98,6 +104,17 @@ read as directional rather than exact.
 Trend compares item value across dated snapshots. It only appears when there
 are multiple snapshot dates, so some items may still show "not enough snapshot
 history yet" while data continues to accumulate.
+
+### Market Change Alerts
+
+Market Change Alerts compare the latest gpovalues snapshot with the immediately
+previous available snapshot. They are leads for review, not buy or sell
+recommendations. The page groups fired rows by value movement, demand-ratio
+change, and `trade_count` activity change, then keeps non-alert guard rows
+visible for insufficient history, missing comparison items, duplicate item
+identities, stale snapshots, and invalid or extreme values. `trade_count` is an
+activity indicator that can decrease; it is not daily trade volume or new
+trades today.
 
 ### Historical Signal Lab
 

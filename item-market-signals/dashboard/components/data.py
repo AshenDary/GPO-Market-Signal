@@ -9,6 +9,10 @@ from market_signals.analysis.historical_signal_lab import (
     HistoricalSignalResult,
     run_historical_signal_lab,
 )
+from market_signals.analysis.market_change_alerts import (
+    MarketChangeAlertResult,
+    run_market_change_alerts,
+)
 from market_signals.features.build_feature_matrix import build_feature_matrix
 from market_signals.models.trend_model import load_snapshot_history, most_traded
 from market_signals.models.value_regression import (
@@ -37,6 +41,12 @@ def load_history() -> pd.DataFrame:
 def load_historical_signal_lab() -> HistoricalSignalResult:
     """Run the historical signal lab from raw gpovalues snapshots."""
     return run_historical_signal_lab()
+
+
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
+def load_market_change_alerts() -> MarketChangeAlertResult:
+    """Run current-vs-previous market change alerts from raw snapshots."""
+    return run_market_change_alerts()
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)

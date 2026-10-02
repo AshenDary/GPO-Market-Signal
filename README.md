@@ -15,8 +15,11 @@ The active Python project lives in [`item-market-signals/`](item-market-signals/
 - CLI value lookup with asking-price verdicts
 - private local decision log for real buy/no-buy checks and later resale outcomes
 - Streamlit dashboard with Start Here, Overview, Item lookup, Trade Simulator,
-  Model Insights, Trend, and Value List pages
+  Model Insights, Trend, Market Change Alerts, Historical Signal Lab, and
+  Value List pages
 - snapshot-based trend context
+- daily market-change alert candidates for unusually large latest-vs-previous
+  snapshot moves in published value, demand ratio, or `trade_count` activity
 - structural value regression for low-confidence/tier-only estimates
 - SHAP explanations for the RandomForestRegressor value model, displayed as
   log-space relative contributions

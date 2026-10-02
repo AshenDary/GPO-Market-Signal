@@ -16,6 +16,7 @@ import streamlit as st
 
 from dashboard.components.layout import render_metric_cards
 from market_signals.analysis.historical_signal_lab import HistoricalSignalResult
+from market_signals.analysis.market_change_alerts import MarketChangeAlertResult
 from market_signals.evaluator.evaluate import (
     find_item_matches,
     resolve_item,
@@ -1168,6 +1169,251 @@ def render_trend(df: pd.DataFrame, history: pd.DataFrame | None) -> None:
         return
 
     _render_item_trend_chart(row, history)
+
+
+def _alert_type_label(alert_type: object) -> str:
+    labels = {
+        "value_movement": "Value movement",
+        "demand_change": "Demand change",
+        "activity_change": "Activity change",
+    }
+    return labels.get(str(alert_type), str(alert_type).replace("_", " ").title())
+
+
+def _render_alert_rules(result: MarketChangeAlertResult) -> None:
+    rules = result.rules
+    render_metric_cards(
+        [
+            ("Minimum item history", f"{rules.minimum_item_snapshot_dates} snapshot dates"),
+            ("Stale snapshot guard", f">{rules.stale_snapshot_days} days old"),
+            ("Published value rule", f"{rules.value_change_pct_threshold:.0f}% and {rules.value_change_min_abs:,.0f}+ units"),
+            ("Demand-ratio rule", f"{rules.demand_ratio_abs_change_threshold:.2f}+ point change"),
+            ("Activity rule", f"{rules.activity_change_pct_threshold:.0f}% and {rules.activity_change_min_abs:,.0f}+ count change"),
+            ("Extreme guards", f"value>{rules.max_reasonable_value:,.0f}, demand>{rules.max_reasonable_demand_ratio:g}, activity>{rules.max_reasonable_trade_count:,.0f}"),
+        ],
+        class_name="metric-grid--three",
+    )
+
+
+def _render_alert_history_chart(result: MarketChangeAlertResult, identity: str, name: str) -> None:
+    history = result.item_history
+    item_history = history[history["item_identity"] == identity].copy()
+    if item_history.empty:
+        _notice("No underlying history is available for the selected item identity.")
+        return
+
+    item_history["snapshot_date"] = pd.to_datetime(item_history["snapshot_date"])
+    metric_specs = [
+        ("value", "Published value"),
+        ("demand_ratio", "Demand ratio"),
+        ("trade_count", "trade_count activity signal"),
+    ]
+    fig = go.Figure()
+    for metric, label in metric_specs:
+        if metric not in item_history.columns:
+            continue
+        metric_rows = item_history.dropna(subset=[metric]).sort_values("snapshot_date")
+        if metric_rows.empty:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=metric_rows["snapshot_date"],
+                y=metric_rows[metric],
+                mode="lines+markers",
+                name=label,
+                customdata=metric_rows["snapshot_date"].dt.strftime("%Y-%m-%d"),
+                hovertemplate=f"Date: %{{customdata}}<br>{escape(label)}: %{{y:,.2f}}<extra></extra>",
+            )
+        )
+
+    fig.update_layout(
+        title=f"{name} underlying snapshot history",
+        paper_bgcolor=PALETTE["bg"],
+        plot_bgcolor=PALETTE["bg"],
+        font={"color": PALETTE["muted"], "family": "IBM Plex Sans"},
+        hoverlabel={
+            "bgcolor": PALETTE["surface"],
+            "bordercolor": PALETTE["border"],
+            "font_color": PALETTE["ink"],
+        },
+        legend={"font": {"color": PALETTE["muted"]}},
+        margin={"l": 20, "r": 20, "t": 48, "b": 20},
+        xaxis={
+            "title": {"text": "Snapshot date", "font": {"color": PALETTE["muted"]}},
+            "gridcolor": PALETTE["border"],
+            "linecolor": PALETTE["border"],
+            "tickfont": {"color": PALETTE["muted"]},
+        },
+        yaxis={
+            "title": {"text": "Metric value", "font": {"color": PALETTE["muted"]}},
+            "gridcolor": PALETTE["border"],
+            "linecolor": PALETTE["border"],
+            "tickfont": {"color": PALETTE["muted"]},
+        },
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+
+def render_market_change_alerts(result: MarketChangeAlertResult) -> None:
+    """Render current snapshot alert candidates and guard statuses."""
+    _section_title("Market Change Alerts")
+    metadata = result.metadata
+    evaluations = result.evaluations.copy()
+    alerts = result.alerts.copy()
+
+    render_metric_cards(
+        [
+            ("Latest snapshot", str(metadata["latest_snapshot_date"])),
+            ("Comparison snapshot", str(metadata["comparison_snapshot_date"])),
+            ("Latest item rows", f"{int(metadata['latest_item_rows']):,}"),
+            ("Alerts", f"{int(metadata['alert_count']):,}"),
+            ("Value alerts", f"{int(metadata['value_alert_count']):,}"),
+            ("Demand alerts", f"{int(metadata['demand_alert_count']):,}"),
+            ("Activity alerts", f"{int(metadata['activity_alert_count']):,}"),
+            ("Snapshot age", f"{int(metadata['days_since_latest_snapshot'])} day(s)"),
+        ],
+        class_name="metric-grid--three",
+    )
+    _notice(
+        "Alerts are leads for review, not buy or sell recommendations. They compare the latest "
+        "gpovalues snapshot with the immediately previous available snapshot and keep guard rows "
+        "visible when an item cannot be evaluated."
+    )
+    _notice(
+        "trade_count is shown as gpovalues' activity indicator. It can decrease, so changes here "
+        "are not daily trade volume and not a count of new trades."
+    )
+    if bool(metadata["is_stale"]):
+        st.warning(
+            "Latest gpovalues snapshot is older than the configured stale guard. "
+            "Refresh snapshots before relying on daily checks."
+        )
+
+    _section_title("Rule settings")
+    _render_alert_rules(result)
+
+    if evaluations.empty:
+        _notice("No latest snapshot rows are available for alert evaluation.")
+        return
+
+    _section_title("Alerts by type")
+    grouped = (
+        evaluations.groupby("alert_type", as_index=False)
+        .agg(
+            latest_items=("item_identity", "nunique"),
+            alerts=("fired", "sum"),
+            guarded_or_non_alert_rows=("status", "size"),
+        )
+    )
+    grouped["alert_type"] = grouped["alert_type"].map(_alert_type_label)
+    st.dataframe(
+        grouped.rename(
+            columns={
+                "alert_type": "Alert type",
+                "latest_items": "Latest items",
+                "alerts": "Alerts fired",
+                "guarded_or_non_alert_rows": "Evaluated rows",
+            }
+        ),
+        hide_index=True,
+        use_container_width=True,
+    )
+
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        selected_type = st.selectbox(
+            "Alert type",
+            ["All", *[_alert_type_label(kind) for kind in sorted(evaluations["alert_type"].unique())]],
+            key="market_change_alert_type",
+        )
+    with col_b:
+        fired_only = st.toggle("Fired alerts only", value=True, key="market_change_fired_only")
+    with col_c:
+        selected_status = st.selectbox(
+            "Status",
+            ["All", *sorted(evaluations["status"].dropna().unique())],
+            key="market_change_status",
+        )
+
+    table = alerts if fired_only else evaluations
+    if selected_type != "All":
+        inverse_labels = {_alert_type_label(kind): kind for kind in evaluations["alert_type"].unique()}
+        table = table[table["alert_type"] == inverse_labels[selected_type]]
+    if selected_status != "All":
+        table = table[table["status"] == selected_status]
+
+    item_filter = st.text_input("Filter item name", key="market_change_item_filter")
+    if item_filter.strip():
+        table = table[table["item_name"].str.contains(item_filter.strip(), case=False, na=False, regex=False)]
+
+    table = table.sort_values(["alert_type", "fired", "item_name"], ascending=[True, False, True])
+    display = table[
+        [
+            "alert_type",
+            "status",
+            "item_name",
+            "current_date",
+            "comparison_date",
+            "current_value",
+            "comparison_value",
+            "absolute_change",
+            "percent_change",
+            "direction",
+            "item_snapshot_dates",
+            "reason",
+        ]
+    ].rename(
+        columns={
+            "alert_type": "Alert type",
+            "status": "Status",
+            "item_name": "Item",
+            "current_date": "Current date",
+            "comparison_date": "Comparison date",
+            "current_value": "Current",
+            "comparison_value": "Comparison",
+            "absolute_change": "Change",
+            "percent_change": "Change %",
+            "direction": "Direction",
+            "item_snapshot_dates": "History dates",
+            "reason": "Exact reason",
+        }
+    )
+    if not display.empty:
+        display["Alert type"] = display["Alert type"].map(_alert_type_label)
+    selection = st.dataframe(
+        display,
+        hide_index=True,
+        use_container_width=True,
+        height=520,
+        selection_mode="single-row",
+        on_select="rerun",
+        key="market_change_alert_table",
+        column_config={
+            "Current": st.column_config.NumberColumn("Current", format="%.2f"),
+            "Comparison": st.column_config.NumberColumn("Comparison", format="%.2f"),
+            "Change": st.column_config.NumberColumn("Change", format="%.2f"),
+            "Change %": st.column_config.NumberColumn("Change %", format="%.2f"),
+            "History dates": st.column_config.NumberColumn("History dates", format="localized"),
+            "Exact reason": st.column_config.TextColumn("Exact reason", width="large"),
+        },
+    )
+
+    selected_rows = getattr(getattr(selection, "selection", None), "rows", [])
+    if selected_rows and not table.empty:
+        selected = table.iloc[selected_rows[0]]
+        _section_title("Underlying item history")
+        _render_alert_history_chart(result, str(selected["item_identity"]), str(selected["item_name"]))
+    else:
+        _notice("Select a row to inspect the underlying snapshot history for that item.")
+
+    _section_title("Guard status counts")
+    guard_counts = evaluations["status"].value_counts().rename_axis("status").reset_index(name="rows")
+    st.dataframe(
+        guard_counts,
+        hide_index=True,
+        use_container_width=True,
+        column_config={"rows": st.column_config.NumberColumn("Rows", format="localized")},
+    )
 
 
 def render_historical_signal_lab(result: HistoricalSignalResult) -> None:
