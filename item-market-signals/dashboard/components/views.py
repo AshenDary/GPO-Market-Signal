@@ -522,7 +522,7 @@ def render_lookup(
             f'<h3 class="item-title">{escape(str(row["name"]))}</h3>'
             f'<p class="item-meta">{escape(str(shortcut))}</p>'
             f'<p class="item-meta">Confidence <span class="num">{escape(str(row["confidence"]))}</span> / '
-            f'<span class="num">{trade_count:,}</span> trades observed</p>'
+            f'trade_count activity <span class="num">{trade_count:,}</span></p>'
             f'<p class="item-meta">Demand: {escape(str(row.get("demand", "unknown")))}</p>'
             '</div></div>'
         ),
@@ -537,7 +537,7 @@ def render_lookup(
             ("Typical high", _format_value(row["ci_high"])),
             ("Confidence", str(row["confidence"])),
             ("Demand", str(row.get("demand", "unknown"))),
-            ("Trades observed", f"{trade_count:,}"),
+            ("Activity signal", f"trade_count={trade_count:,}"),
         ],
         class_name="metric-grid--three",
     )
