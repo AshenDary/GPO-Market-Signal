@@ -23,6 +23,7 @@ NAV_PAGES = [
     st.Page("pages/simulator.py", title="Trade Simulator", icon=":material/swap_horiz:"),
     st.Page("pages/model_insights.py", title="Model Insights", icon=":material/analytics:"),
     st.Page("pages/trend.py", title="Trend", icon=":material/show_chart:"),
+    st.Page("pages/market_change_alerts.py", title="Market Change Alerts", icon=":material/notification_important:"),
     st.Page("pages/historical_signal_lab.py", title="Historical Signal Lab", icon=":material/science:"),
     st.Page("pages/value_list.py", title="Value List", icon=":material/table:"),
     st.Page("pages/guide.py", title="Start Here", icon=":material/info:", default=True),

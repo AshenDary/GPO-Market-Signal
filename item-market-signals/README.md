@@ -25,6 +25,8 @@ estimates are labeled as model-derived, and uncertainty is shown plainly.
   - **Trade Simulator** - compare items on both sides of a proposed trade
   - **Model Insights** - regression diagnostics, anomaly table, SHAP breakdowns
   - **Trend** - item value movement across dated snapshots
+  - **Market Change Alerts** - latest-vs-previous snapshot review leads for
+    value movement, demand-ratio movement, and `trade_count` activity changes
   - **Historical Signal Lab** - exploratory historical signal cohorts with
     same-date baselines and 14-day published-estimate outcomes
   - **Value List** - searchable full value catalog
@@ -167,6 +169,7 @@ item-market-signals/
       simulator.py
       model_insights.py
       trend.py
+      market_change_alerts.py
       historical_signal_lab.py
       value_list.py
     components/
@@ -192,6 +195,8 @@ item-market-signals/
     config/settings.py
     market_signals/
       analysis/
+        market_change_alerts.py
+        historical_signal_lab.py
       decisions/
       ingest/
       features/
@@ -208,6 +213,37 @@ item-market-signals/
 gpovalues.com is the primary source for solved market values and confidence
 bands. The tier JSON is structural context only; it does not replace observed
 market prices.
+
+Market Change Alerts are daily review leads, not buy or sell recommendations.
+They evaluate every item row in the latest `gpovalues_*.csv` snapshot against
+the immediately previous available gpovalues snapshot. Item identity is the
+gpovalues `slug` when present, falling back to `join_key` and then exact item
+name. Duplicate current identities, duplicate comparison identities, missing
+comparison items, missing identities, insufficient history, stale snapshots,
+and invalid or extreme metric values are surfaced as explicit statuses instead
+of being silently filled.
+
+The page also shows market-wide published-value context for the latest-vs-
+previous comparison window. That context counts items with one unambiguous row
+in both snapshots and valid positive published values, then reports the median
+percentage change plus how many comparable items rose, fell, or stayed flat. It
+is a backdrop for interpreting item alerts and does not claim a cause for broad
+movement.
+
+The default alert rules are intentionally simple and shown on the dashboard:
+
+- published value alert: absolute percent change of at least 25% and absolute
+  value-unit change of at least 1,000
+- demand-ratio alert: absolute demand-ratio movement of at least 1.00 point
+- activity alert: `trade_count` movement of at least 50% and at least 100
+  count units
+- minimum history: at least three unambiguous snapshot dates for the item
+- stale snapshot notice: latest snapshot is more than two days older than the
+  report `as_of` date
+
+`trade_count` is a gpovalues activity indicator and can decrease between
+snapshots. Alert text must not describe it as daily trade volume or as a count
+of new trades.
 
 Historical Signal Lab is exploratory. For each evaluation snapshot it computes:
 
@@ -245,7 +281,7 @@ not exact per-feature money amounts.
 ## Current status
 
 The ingestion pipeline, feature builder, CLI, dashboard, trade simulator,
-snapshot trend views, Historical Signal Lab, value regression, and SHAP
-explainability are working. The main deferred modeling work is richer trend
-forecasting once enough long-term snapshot history exists and refinement of
-structural features such as prestige/item-family signals.
+snapshot trend views, Market Change Alerts, Historical Signal Lab, value
+regression, and SHAP explainability are working. The main deferred modeling
+work is richer trend forecasting once enough long-term snapshot history exists
+and refinement of structural features such as prestige/item-family signals.
