@@ -111,11 +111,15 @@ def check(
     typer.echo(f"\n{row['name']} ({row.get('shortcut', '')})")
     typer.echo(f"  Fair value      : {row['value']:,.0f}")
     typer.echo(f"  Typical range   : {row['ci_low']:,.0f} - {row['ci_high']:,.0f}")
-    typer.echo(f"  Confidence      : {row['confidence']} ({int(row['trade_count'])} trades observed)")
+    typer.echo(f"  Confidence      : {row['confidence']}")
+    typer.echo(f"  Activity signal : trade_count={int(row['trade_count'])}")
     typer.echo(f"  Demand          : {row.get('demand', 'unknown')}")
 
     if row["confidence"] == "low":
-        typer.echo("  Note: low-confidence item (under 200 observed trades). Treat this value as directional, not exact.")
+        typer.echo(
+            "  Note: low-confidence item (thin trade_count activity signal). "
+            "Treat this value as directional, not exact."
+        )
 
     trend = compute_trend(row["join_key"])
     if trend:
