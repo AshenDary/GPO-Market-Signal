@@ -116,6 +116,11 @@ identities, stale snapshots, and invalid or extreme values. `trade_count` is an
 activity indicator that can decrease; it is not daily trade volume or new
 trades today.
 
+The market-wide value context compares only items with one unambiguous row in
+both snapshots and valid positive published values. It reports comparable item
+count, median published-value percentage change, and how many comparable items
+rose, fell, or stayed flat, without inferring why a broad move happened.
+
 ### Historical Signal Lab
 
 Historical Signal Lab evaluates simple item-date signals from past gpovalues

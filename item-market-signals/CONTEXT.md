@@ -116,7 +116,10 @@ Data flow:
    latest snapshot with the immediately previous available snapshot. It emits
    review-lead alerts and explicit guard rows for duplicate identities, missing
    comparison items, insufficient item history, stale snapshots, and invalid or
-   extreme values.
+   extreme values. It also reports market-wide published-value context for
+   items matched unambiguously across the comparison window with valid positive
+   values: comparable item count, median percent change, and rose/fell/flat
+   counts. This context is descriptive only and does not infer causes.
 6. `historical_signal_lab.py` uses only raw dated gpovalues snapshots to
    evaluate prior 7-day value movement, prior 7-day demand-ratio movement, and
    confidence categories against later published estimates.

@@ -1195,6 +1195,40 @@ def _render_alert_rules(result: MarketChangeAlertResult) -> None:
     )
 
 
+def _format_signed_percent(value: object) -> str:
+    if value is None or pd.isna(value):
+        return "n/a"
+    return f"{float(value):+,.2f}%"
+
+
+def _render_market_value_context(metadata: dict[str, object]) -> None:
+    context = metadata.get("market_value_context", {})
+    if not isinstance(context, dict):
+        return
+
+    _section_title("Market-wide value context")
+    current_date = context.get("current_date") or metadata.get("latest_snapshot_date")
+    comparison_date = context.get("comparison_date") or metadata.get("comparison_snapshot_date")
+    render_metric_cards(
+        [
+            ("Comparison window", f"{comparison_date or 'n/a'} to {current_date or 'n/a'}"),
+            ("Compared items", f"{int(context.get('compared_items') or 0):,}"),
+            ("Median value change", _format_signed_percent(context.get("median_percent_change"))),
+            ("Rose", f"{int(context.get('rose_count') or 0):,}"),
+            ("Fell", f"{int(context.get('fell_count') or 0):,}"),
+            ("Flat", f"{int(context.get('flat_count') or 0):,}"),
+        ],
+        class_name="metric-grid--three",
+    )
+    _notice(
+        "This context compares gpovalues published values for items with one unambiguous row "
+        "in both snapshots and valid positive values. It helps interpret item alerts against "
+        "wider latest-vs-previous movement; it does not explain why values moved."
+    )
+    if context.get("status") != "ready" and context.get("reason"):
+        _notice(str(context["reason"]))
+
+
 def _render_alert_history_chart(result: MarketChangeAlertResult, identity: str, name: str) -> None:
     history = result.item_history
     item_history = history[history["item_identity"] == identity].copy()
@@ -1288,6 +1322,8 @@ def render_market_change_alerts(result: MarketChangeAlertResult) -> None:
             "Latest gpovalues snapshot is older than the configured stale guard. "
             "Refresh snapshots before relying on daily checks."
         )
+
+    _render_market_value_context(metadata)
 
     _section_title("Rule settings")
     _render_alert_rules(result)

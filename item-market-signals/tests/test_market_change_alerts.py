@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from market_signals.analysis.market_change_alerts import (
+    MarketChangeAlertResult,
     MarketChangeAlertRules,
     run_market_change_alerts,
 )
@@ -51,6 +52,12 @@ def _evaluation(result, item_name: str, alert_type: str) -> pd.Series:
     ]
     assert len(matches) == 1
     return matches.iloc[0]
+
+
+def _market_value_context(result: MarketChangeAlertResult) -> dict[str, object]:
+    context = result.metadata["market_value_context"]
+    assert isinstance(context, dict)
+    return context
 
 
 def test_rising_value_change_fires_with_exact_reason(tmp_path: Path) -> None:
@@ -198,3 +205,120 @@ def test_stale_latest_snapshot_is_reported_in_metadata(tmp_path: Path) -> None:
 
     assert result.metadata["days_since_latest_snapshot"] == 7
     assert result.metadata["is_stale"] is True
+
+
+def test_market_value_context_reports_mostly_rising_values(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(
+        snapshot_dir,
+        "2026-09-01",
+        [
+            _row("Candy Cane", value=100),
+            _row("Flower Sword", value=200),
+            _row("Prestige Bag", value=400),
+            _row("Flat Hat", value=100),
+        ],
+    )
+    _write_snapshot(
+        snapshot_dir,
+        "2026-09-02",
+        [
+            _row("Candy Cane", value=110),
+            _row("Flower Sword", value=260),
+            _row("Prestige Bag", value=420),
+            _row("Flat Hat", value=100),
+        ],
+    )
+
+    context = _market_value_context(run_market_change_alerts(snapshot_dir))
+
+    assert context["status"] == "ready"
+    assert context["comparison_date"] == "2026-09-01"
+    assert context["current_date"] == "2026-09-02"
+    assert context["compared_items"] == 4
+    assert context["rose_count"] == 3
+    assert context["fell_count"] == 0
+    assert context["flat_count"] == 1
+    assert context["median_percent_change"] == pytest.approx(7.5)
+
+
+def test_market_value_context_reports_mostly_falling_values(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(
+        snapshot_dir,
+        "2026-09-01",
+        [
+            _row("Candy Cane", value=100),
+            _row("Flower Sword", value=200),
+            _row("Prestige Bag", value=400),
+            _row("Flat Hat", value=100),
+        ],
+    )
+    _write_snapshot(
+        snapshot_dir,
+        "2026-09-02",
+        [
+            _row("Candy Cane", value=90),
+            _row("Flower Sword", value=150),
+            _row("Prestige Bag", value=380),
+            _row("Flat Hat", value=100),
+        ],
+    )
+
+    context = _market_value_context(run_market_change_alerts(snapshot_dir))
+
+    assert context["status"] == "ready"
+    assert context["compared_items"] == 4
+    assert context["rose_count"] == 0
+    assert context["fell_count"] == 3
+    assert context["flat_count"] == 1
+    assert context["median_percent_change"] == pytest.approx(-7.5)
+
+
+def test_market_value_context_reports_mixed_values(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(
+        snapshot_dir,
+        "2026-09-01",
+        [
+            _row("Candy Cane", value=100),
+            _row("Flower Sword", value=100),
+            _row("Flat Hat", value=100),
+        ],
+    )
+    _write_snapshot(
+        snapshot_dir,
+        "2026-09-02",
+        [
+            _row("Candy Cane", value=110),
+            _row("Flower Sword", value=90),
+            _row("Flat Hat", value=100),
+        ],
+    )
+
+    context = _market_value_context(run_market_change_alerts(snapshot_dir))
+
+    assert context["status"] == "ready"
+    assert context["compared_items"] == 3
+    assert context["rose_count"] == 1
+    assert context["fell_count"] == 1
+    assert context["flat_count"] == 1
+    assert context["median_percent_change"] == pytest.approx(0)
+
+
+def test_market_value_context_reports_insufficient_comparable_data(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(snapshot_dir, "2026-09-01", [_row("Candy Cane", value=100)])
+    _write_snapshot(snapshot_dir, "2026-09-02", [_row("Flower Sword", value=120)])
+
+    context = _market_value_context(run_market_change_alerts(snapshot_dir))
+
+    assert context["status"] == "insufficient_comparable_data"
+    assert context["comparison_date"] == "2026-09-01"
+    assert context["current_date"] == "2026-09-02"
+    assert context["compared_items"] == 0
+    assert context["median_percent_change"] is None
+    assert context["rose_count"] == 0
+    assert context["fell_count"] == 0
+    assert context["flat_count"] == 0
+    assert "No item had one unambiguous row" in str(context["reason"])

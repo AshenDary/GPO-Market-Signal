@@ -456,7 +456,86 @@ def _metadata(
         "demand_alert_count": int((fired["alert_type"] == "demand_change").sum()),
         "activity_alert_count": int((fired["alert_type"] == "activity_change").sum()),
         "guard_counts": evaluations["status"].value_counts().to_dict(),
+        "market_value_context": _market_value_context(snapshots, rules),
         "rules": asdict(rules),
+    }
+
+
+def _market_value_context(
+    snapshots: list[SnapshotFrame],
+    rules: MarketChangeAlertRules,
+) -> dict[str, object]:
+    latest_snapshot = snapshots[-1]
+    comparison_snapshot = snapshots[-2] if len(snapshots) >= 2 else None
+    base: dict[str, object] = {
+        "current_date": latest_snapshot.snapshot_date.isoformat(),
+        "comparison_date": comparison_snapshot.snapshot_date.isoformat() if comparison_snapshot else None,
+        "compared_items": 0,
+        "median_percent_change": None,
+        "rose_count": 0,
+        "fell_count": 0,
+        "flat_count": 0,
+        "status": "insufficient_comparable_data",
+        "reason": "",
+    }
+    if comparison_snapshot is None:
+        return {
+            **base,
+            "reason": "Need at least two dated gpovalues snapshots before summarizing market-wide value movement.",
+        }
+
+    changes: list[float] = []
+    rose_count = 0
+    fell_count = 0
+    flat_count = 0
+    for _, latest_row in latest_snapshot.frame.iterrows():
+        identity = _string_or_blank(latest_row.get("item_identity"))
+        if _latest_item_status(latest_row) != "ready":
+            continue
+        comparison_status, comparison_row = _comparison_match(comparison_snapshot, identity)
+        if comparison_status != "ready" or comparison_row is None:
+            continue
+
+        current_status, current = _valid_positive_number(
+            latest_row.get("value"), max_value=rules.max_reasonable_value
+        )
+        comparison_value_status, comparison = _valid_positive_number(
+            comparison_row.get("value"), max_value=rules.max_reasonable_value
+        )
+        if current_status != "ready" or comparison_value_status != "ready":
+            continue
+        assert current is not None and comparison is not None
+
+        abs_change = current - comparison
+        changes.append((abs_change / comparison) * 100)
+        if abs_change > 0:
+            rose_count += 1
+        elif abs_change < 0:
+            fell_count += 1
+        else:
+            flat_count += 1
+
+    if not changes:
+        return {
+            **base,
+            "reason": (
+                "No item had one unambiguous row in both snapshots with valid positive "
+                "published values."
+            ),
+        }
+
+    return {
+        **base,
+        "compared_items": len(changes),
+        "median_percent_change": round(float(pd.Series(changes).median()), 4),
+        "rose_count": rose_count,
+        "fell_count": fell_count,
+        "flat_count": flat_count,
+        "status": "ready",
+        "reason": (
+            "Compared items with one unambiguous row in both snapshots and valid positive "
+            "published values."
+        ),
     }
 
 

@@ -223,6 +223,13 @@ comparison items, missing identities, insufficient history, stale snapshots,
 and invalid or extreme metric values are surfaced as explicit statuses instead
 of being silently filled.
 
+The page also shows market-wide published-value context for the latest-vs-
+previous comparison window. That context counts items with one unambiguous row
+in both snapshots and valid positive published values, then reports the median
+percentage change plus how many comparable items rose, fell, or stayed flat. It
+is a backdrop for interpreting item alerts and does not claim a cause for broad
+movement.
+
 The default alert rules are intentionally simple and shown on the dashboard:
 
 - published value alert: absolute percent change of at least 25% and absolute
