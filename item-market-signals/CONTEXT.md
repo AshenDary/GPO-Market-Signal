@@ -28,10 +28,12 @@ This is a personal tool and a data science portfolio project. Both matter:
 code should work correctly for real buying decisions and be defensible in an
 interview. Honest uncertainty handling matters as much as the happy path.
 
-There is no personal trade log. That was the original design and was
-deliberately dropped because the user buys from sellers and does not have a
-completed item-for-item trade history. Do not reintroduce a trade log as the
-primary data source without being asked.
+The project now includes a private, local decision log for real buy/no-buy
+checks, asking prices, purchase prices, and actual resale outcomes when they
+exist. This log is personal workflow evidence, not the market-value source of
+truth. gpovalues snapshots remain the primary source for published market
+values, confidence bands, demand signals, and marked 14-day published-estimate
+outcomes.
 
 ## Data sources
 
