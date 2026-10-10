@@ -27,7 +27,7 @@ def _feature_matrix() -> pd.DataFrame:
     )
 
 
-def test_cli_describes_trade_count_as_activity_signal(monkeypatch) -> None:
+def test_cli_distinguishes_gpovalues_confidence_from_activity_signal(monkeypatch) -> None:
     monkeypatch.setattr(evaluate, "_load_feature_matrix", lambda: _feature_matrix())
     monkeypatch.setattr(evaluate, "compute_trend", lambda _join_key: None)
 
@@ -35,5 +35,6 @@ def test_cli_describes_trade_count_as_activity_signal(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert "Activity signal : trade_count=52" in result.output
-    assert "thin trade_count activity signal" in result.output
+    assert "gpovalues publishes this item with a low-confidence label" in result.output
+    assert "low-confidence item (thin trade_count activity signal)" not in result.output
     assert "trades observed" not in result.output

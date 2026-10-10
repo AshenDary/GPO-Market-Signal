@@ -117,7 +117,7 @@ def check(
 
     if row["confidence"] == "low":
         typer.echo(
-            "  Note: low-confidence item (thin trade_count activity signal). "
+            "  Note: gpovalues publishes this item with a low-confidence label. "
             "Treat this value as directional, not exact."
         )
 
