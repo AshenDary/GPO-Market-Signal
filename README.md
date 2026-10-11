@@ -13,7 +13,8 @@ The active Python project lives in [`item-market-signals/`](item-market-signals/
 - tier/rarity reference parsing from a curated JSON file
 - feature merging by exact item name, then shortcut/alias fallback
 - CLI value lookup with asking-price verdicts
-- private local decision log for real buy/no-buy checks and later resale outcomes
+- private local decision log for real buy/no-buy checks, actual resale outcomes,
+  and separate read-only gpovalues marked outcomes
 - Streamlit dashboard with Start Here, Overview, Item lookup, Trade Simulator,
   Model Insights, Trend, Market Change Alerts, Historical Signal Lab, and
   Value List pages
@@ -42,7 +43,8 @@ Run the dashboard:
 streamlit run dashboard/app.py
 ```
 
-Run the full local data pipeline:
+Refresh the market data (network required; this writes dated snapshots and
+generated outputs):
 
 ```bash
 python scripts/run_ingest_gpovalues.py
@@ -65,6 +67,7 @@ GPO_Market/
   requirements.txt                 # kept in sync with project requirements
   item-market-signals/
     README.md
+    DATA_DICTIONARY.md
     CONTEXT.md
     ROADMAP.md
     SKILLS.md
@@ -76,7 +79,9 @@ GPO_Market/
     tests/
 ```
 
-See [`item-market-signals/CONTEXT.md`](item-market-signals/CONTEXT.md) for the
-current architecture and gotchas, and
-[`item-market-signals/ROADMAP.md`](item-market-signals/ROADMAP.md) for what is
-done vs intentionally deferred.
+See the project [`README`](item-market-signals/README.md) for full usage,
+[`DATA_DICTIONARY.md`](item-market-signals/DATA_DICTIONARY.md) for field
+meanings and a read-only walkthrough,
+[`CONTEXT.md`](item-market-signals/CONTEXT.md) for architecture and gotchas,
+and [`ROADMAP.md`](item-market-signals/ROADMAP.md) for what is done versus
+intentionally deferred.

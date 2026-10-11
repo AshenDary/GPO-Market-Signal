@@ -51,6 +51,9 @@ pip install -e .
 The editable install makes both `config` and `market_signals` importable from
 the `src/` layout.
 
+For field meanings, data lineage, analysis statuses, and a read-only
+reproducible walkthrough, see [`DATA_DICTIONARY.md`](DATA_DICTIONARY.md).
+
 Run tests:
 
 ```bash
@@ -155,6 +158,7 @@ Local launcher files are also included:
 ```text
 item-market-signals/
   README.md
+  DATA_DICTIONARY.md
   CONTEXT.md
   ROADMAP.md
   SKILLS.md
@@ -210,9 +214,11 @@ item-market-signals/
 
 ## Data and model notes
 
-gpovalues.com is the primary source for solved market values and confidence
-bands. The tier JSON is structural context only; it does not replace observed
-market prices.
+gpovalues.com is the primary source for published solved market values,
+confidence bands, and the published `confidence` label. The separate
+`trade_count` field is an activity signal, not the source of a locally derived
+confidence label. The tier JSON is structural context only; it does not replace
+gpovalues market estimates.
 
 Market Change Alerts are daily review leads, not buy or sell recommendations.
 They evaluate every item row in the latest `gpovalues_*.csv` snapshot against

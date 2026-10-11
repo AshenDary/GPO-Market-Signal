@@ -37,7 +37,7 @@ outcomes.
 
 ## Data sources
 
-1. **gpovalues.com API** (primary, real prices) - public JSON API at
+1. **gpovalues.com API** (primary, published market estimates) - public JSON API at
    `https://gpovalues.com/api/v1/items.json`, no auth. It provides solved
    `value`, `ci_low`, `ci_high`, `confidence`, `demand`, `demand_ratio`,
    `trade_count`, images, and share URLs. See
@@ -71,6 +71,7 @@ item-market-signals/
       views.py                  page renderers and chart/table UI
     assets/strawhat_favicon.png favicon
   data/
+    decisions/decision_log.csv  private local decisions; ignored by Git
     raw/gpo_market_dataset.json curated tier input
     snapshots/
       gpovalues_{date}.csv      dated public API pulls
@@ -81,6 +82,7 @@ item-market-signals/
     run_ingest_gpovalues.py     thin wrapper around primary ingestion
     run_ingest_tier.py          thin wrapper around tier parser
     run_feature_build.py        thin wrapper around merge output
+    run_decision_log.py         private decision-log CLI
   src/
     config/settings.py          paths, API URL/user-agent, ordinal encodings
     market_signals/
@@ -108,7 +110,8 @@ item-market-signals/
 
 Data flow:
 
-1. `pull_gpovalues_snapshot.py` writes dated real-price snapshots.
+1. `pull_gpovalues_snapshot.py` writes dated gpovalues published-value
+   snapshots.
 2. `parse_tier_dataset.py` writes dated structural tier-reference snapshots.
 3. `build_feature_matrix.py` merges the latest of each using exact normalized
    item name, then gpovalues shortcut vs tier alias. Unmatched gpovalues rows
@@ -179,6 +182,10 @@ Current work is validation, packaging, and model-quality refinement:
 - **Observed market values beat model-derived estimates.** The regression model
   is structural context and low-confidence/tier-only support, not a replacement
   for gpovalues.
+- **Confidence and activity are separate source fields.** `confidence` is the
+  category published by gpovalues. `trade_count` is displayed separately as a
+  gpovalues activity signal; it is not locally reinterpreted as the confidence
+  label.
 - **Log-scale model math must stay honest.** The value model predicts
   `log(value)`. Display final predictions in value units if useful, but show
   SHAP contributions as relative log-space pushes, not per-feature currency
@@ -239,10 +246,10 @@ Current work is validation, packaging, and model-quality refinement:
 - **Streamlit caches can look stale.** Use the page `Refresh data` button after
   running ingestion/build scripts. For hosted Streamlit Cloud, pushes may still
   require a manual app reboot before dependency/runtime changes take effect.
-- **Local Python and hosted Python may differ.** This machine currently runs
-  Python 3.9; Streamlit Cloud may use a much newer runtime such as Python 3.14.
-  Dependency issues can be runtime-specific, so verify both when changing
-  packages like Streamlit, sklearn, Plotly, or SHAP.
+- **Local, workflow, and hosted Python may differ.** The checked-in GitHub
+  Actions workflow uses Python 3.9, while local and hosted runtimes are managed
+  separately. Verify the relevant environments when changing packages such as
+  Streamlit, sklearn, Plotly, or SHAP.
 - **Plotly `titlefont` is deprecated.** Use nested title dictionaries such as
   `xaxis={"title": {"text": "...", "font": {...}}}` instead of old
   `titlefont` keys.
