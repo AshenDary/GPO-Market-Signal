@@ -46,9 +46,10 @@ for `.github/workflows/`, which is relative to the Git root `GPO_Market/`.
 |---|---|
 | New data source ingestion (fetch + parse) | `src/market_signals/ingest/` |
 | Logic that merges/joins snapshot types | `src/market_signals/features/` |
-| Anything computing a derived signal (trend, score, prediction) | `src/market_signals/models/` |
-| User-facing CLI tools | `src/market_signals/evaluator/` |
-| Private decision-log logic | `src/market_signals/decisions/` |
+| Historical snapshot comparisons/evaluation | `src/market_signals/analysis/` |
+| Trend, predictive, and structural model logic | `src/market_signals/models/` |
+| Current item lookup and verdict CLI | `src/market_signals/evaluator/` |
+| Private decision-log logic and CLI | `src/market_signals/decisions/` |
 | Path constants, encodings, shared config | `src/config/settings.py` (don't create a second config file) |
 | Thin script wrapper for a pipeline stage | `scripts/`, name `run_<stage>.py` |
 | Streamlit dashboard entrypoint and dashboard-only UI helpers | `dashboard/` |
