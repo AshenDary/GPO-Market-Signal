@@ -18,6 +18,7 @@ from market_signals.analysis.historical_signal_lab import (
     SnapshotFrame,
     load_gpovalues_snapshots,
 )
+from market_signals.analysis.snapshot_quality import DEFAULT_METRIC_EXTREME_LIMITS
 
 
 @dataclass(frozen=True)
@@ -31,9 +32,9 @@ class MarketChangeAlertRules:
     demand_ratio_abs_change_threshold: float = 1.0
     activity_change_pct_threshold: float = 50.0
     activity_change_min_abs: float = 100.0
-    max_reasonable_value: float = 100_000_000.0
-    max_reasonable_demand_ratio: float = 50.0
-    max_reasonable_trade_count: float = 1_000_000.0
+    max_reasonable_value: float = DEFAULT_METRIC_EXTREME_LIMITS["value"]
+    max_reasonable_demand_ratio: float = DEFAULT_METRIC_EXTREME_LIMITS["demand_ratio"]
+    max_reasonable_trade_count: float = DEFAULT_METRIC_EXTREME_LIMITS["trade_count"]
 
 
 DEFAULT_ALERT_RULES = MarketChangeAlertRules()

@@ -91,7 +91,7 @@ def load_gpovalues_snapshots(snapshot_dir: Path = SNAPSHOT_DIR) -> list[Snapshot
 
     snapshots: list[SnapshotFrame] = []
     for path in files:
-        snapshot_date = _snapshot_date_from_path(path)
+        snapshot_date = gpovalues_snapshot_date(path)
         frame = _prepare_snapshot(pd.read_csv(path), snapshot_date)
         snapshots.append(SnapshotFrame(snapshot_date=snapshot_date, path=path, frame=frame))
     return snapshots
@@ -177,8 +177,8 @@ def summarize_signal_groups(observations: pd.DataFrame) -> pd.DataFrame:
 def _prepare_snapshot(df: pd.DataFrame, snapshot_date: date) -> pd.DataFrame:
     prepared = df.copy()
     prepared["snapshot_date"] = snapshot_date.isoformat()
-    prepared["item_identity"] = prepared.apply(_identity_key, axis=1)
-    prepared["identity_source"] = prepared.apply(_identity_source, axis=1)
+    prepared["item_identity"] = prepared.apply(snapshot_identity, axis=1)
+    prepared["identity_source"] = prepared.apply(snapshot_identity_source, axis=1)
     for column in ("value", "demand_ratio"):
         if column in prepared.columns:
             prepared[column] = pd.to_numeric(prepared[column], errors="coerce")
@@ -386,7 +386,8 @@ def _confirmed_missing_mask(rows: pd.DataFrame) -> pd.Series:
     return ~rows["outcome_status"].isin(["ready", "pending", "awaiting_window", "not_evaluated"])
 
 
-def _identity_key(row: pd.Series) -> str:
+def snapshot_identity(row: pd.Series) -> str:
+    """Return the shared snapshot identity using source fields in priority order."""
     slug = _string_or_blank(row.get("slug")).strip()
     if slug:
         return slug
@@ -397,7 +398,8 @@ def _identity_key(row: pd.Series) -> str:
     return name
 
 
-def _identity_source(row: pd.Series) -> str:
+def snapshot_identity_source(row: pd.Series) -> str:
+    """Return the source field selected by :func:`snapshot_identity`."""
     if _string_or_blank(row.get("slug")).strip():
         return "slug"
     if _string_or_blank(row.get("join_key")).strip():
@@ -427,7 +429,8 @@ def _outcome_direction(value: object) -> str:
     return _signed_group(parsed)
 
 
-def _snapshot_date_from_path(snapshot_path: Path) -> date:
+def gpovalues_snapshot_date(snapshot_path: Path) -> date:
+    """Parse the date from a gpovalues snapshot filename."""
     name = snapshot_path.stem
     prefix = "gpovalues_"
     if not name.startswith(prefix):
