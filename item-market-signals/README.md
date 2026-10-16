@@ -267,6 +267,16 @@ invalid values, or zero values are surfaced as confirmed missing statuses
 instead of being silently filled. Summaries compare each signal group with all
 eligible item-date observations on the same evaluation dates.
 
+The cohort-stability view keeps those item-date summaries and adds two
+exploratory checks. The date-level check first takes the median ready outcome
+for the signal group and same-date baseline on each shared date, then counts
+positive, negative, and flat differences. The item-balanced check first
+collapses repeated ready observations to one median outcome per item. Coverage
+continues to count pending, awaiting-window, and confirmed-missing outcomes;
+they are never converted to zero. A check is labeled `insufficient_data` when
+it has fewer than two ready outcomes, fewer than two shared ready dates, or
+fewer than two items with ready outcomes, as applicable.
+
 Do not read the Historical Signal Lab as a trading backtest. It has no
 historical seller asking prices, does not use the asking-price verdict, and
 does not represent completed trades, realized returns, or profit. Repeated

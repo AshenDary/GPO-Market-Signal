@@ -7,6 +7,7 @@ import pytest
 
 from market_signals.analysis.historical_signal_lab import (
     MAX_OUTCOME_DELAY_DAYS,
+    build_cohort_stability_checks,
     load_gpovalues_snapshots,
     run_historical_signal_lab,
 )
@@ -51,6 +52,23 @@ def _observation(result, evaluation_date: str, item_name: str) -> pd.Series:
     ]
     assert len(matches) == 1
     return matches.iloc[0]
+
+
+def _cohort_row(
+    evaluation_date: str,
+    item_identity: str,
+    group: str,
+    outcome_status: str,
+    outcome_change_pct: float | None = None,
+) -> dict[str, object]:
+    return {
+        "evaluation_date": evaluation_date,
+        "item_identity": item_identity,
+        "evaluation_status": "eligible",
+        "prior_7d_value_change_group": group,
+        "outcome_status": outcome_status,
+        "outcome_change_pct": outcome_change_pct,
+    }
 
 
 def test_prior_signals_use_exact_past_snapshot_without_future_leakage(tmp_path: Path) -> None:
@@ -303,6 +321,92 @@ def test_repeated_item_dates_are_observations_not_unique_items(tmp_path: Path) -
 
     assert int(repeated_summary.iloc[0]["observations"]) == 4
     assert int(repeated_summary.iloc[0]["unique_items"]) == 1
+
+
+def test_item_balanced_check_gives_repeated_items_one_weight() -> None:
+    observations = pd.DataFrame(
+        [
+            _cohort_row("2026-09-01", "item-a", "up", "ready", 100),
+            _cohort_row("2026-09-02", "item-a", "up", "ready", 100),
+            _cohort_row("2026-09-03", "item-a", "up", "ready", 100),
+            _cohort_row("2026-09-01", "item-b", "up", "ready", -100),
+        ]
+    )
+
+    checks = build_cohort_stability_checks(observations)
+    row = checks[(checks["signal"] == "prior_7d_value_change") & (checks["group"] == "up")].iloc[0]
+
+    assert observations["outcome_change_pct"].mean() == pytest.approx(50)
+    assert row["item_check_status"] == "ready"
+    assert row["item_balanced_ready_items"] == 2
+    assert row["item_balanced_mean_change_pct"] == pytest.approx(0)
+    assert row["item_balanced_median_change_pct"] == pytest.approx(0)
+    assert row["item_balanced_positive_change_pct"] == pytest.approx(50)
+
+
+def test_date_level_check_counts_same_date_reversal() -> None:
+    observations = pd.DataFrame(
+        [
+            _cohort_row("2026-09-01", "signal-item", "up", "ready", 20),
+            _cohort_row("2026-09-01", "baseline-item-1", "down", "ready", -20),
+            _cohort_row("2026-09-02", "signal-item", "up", "ready", -20),
+            _cohort_row("2026-09-02", "baseline-item-2", "down", "ready", 20),
+        ]
+    )
+
+    checks = build_cohort_stability_checks(observations)
+    row = checks[(checks["signal"] == "prior_7d_value_change") & (checks["group"] == "up")].iloc[0]
+
+    assert row["date_check_status"] == "ready"
+    assert row["date_comparison_count"] == 2
+    assert row["date_positive_difference_count"] == 1
+    assert row["date_negative_difference_count"] == 1
+    assert row["date_flat_difference_count"] == 0
+    assert row["date_median_difference_pct"] == pytest.approx(0)
+
+
+def test_cohort_coverage_keeps_incomplete_outcomes_and_reports_insufficient_data() -> None:
+    observations = pd.DataFrame(
+        [
+            _cohort_row("2026-09-01", "item-a", "up", "ready", 10),
+            _cohort_row("2026-09-02", "item-a", "up", "pending"),
+            _cohort_row("2026-09-02", "item-b", "up", "awaiting_window"),
+            _cohort_row("2026-09-03", "item-c", "up", "no_snapshot_in_window"),
+        ]
+    )
+
+    checks = build_cohort_stability_checks(observations)
+    row = checks[(checks["signal"] == "prior_7d_value_change") & (checks["group"] == "up")].iloc[0]
+
+    assert row["observations"] == 4
+    assert row["unique_evaluation_dates"] == 3
+    assert row["unique_items"] == 3
+    assert row["ready_outcome_count"] == 1
+    assert row["ready_outcome_coverage_pct"] == pytest.approx(25)
+    assert row["pending_outcome_count"] == 1
+    assert row["awaiting_window_count"] == 1
+    assert row["confirmed_missing_outcome_count"] == 1
+    assert row["date_check_status"] == "insufficient_data"
+    assert row["item_check_status"] == "insufficient_data"
+    assert "need at least 2 ready outcomes" in row["date_check_reason"]
+    assert "need at least 2 items with ready outcomes" in row["item_check_reason"]
+
+
+def test_historical_lab_returns_cohort_checks_without_changing_outcome_identity_rules(
+    tmp_path: Path,
+) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(snapshot_dir, "2026-09-01", [_row("Candy Cane", value=100)])
+    _write_snapshot(snapshot_dir, "2026-09-08", [_row("Candy Cane", value=110)])
+    _write_snapshot(snapshot_dir, "2026-09-22", [_row("Candy Cane", value=121)])
+
+    result = run_historical_signal_lab(snapshot_dir)
+    row = _observation(result, "2026-09-08", "Candy Cane")
+
+    assert row["outcome_status"] == "ready"
+    assert row["actual_outcome_date"] == "2026-09-22"
+    assert not result.cohort_checks.empty
+    assert set(result.cohort_checks["date_check_status"]) == {"insufficient_data"}
 
 
 def test_snapshot_loader_requires_snapshot_files(tmp_path: Path) -> None:
