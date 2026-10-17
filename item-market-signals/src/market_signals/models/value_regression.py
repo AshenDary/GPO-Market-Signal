@@ -32,6 +32,8 @@ CONFIDENT_TRAINING_LABELS = {"medium", "high"}
 ANOMALY_STD_THRESHOLD = 1.5
 LINEAR_INADEQUATE_R2 = 0.25
 RANDOM_FOREST_MIN_R2_GAIN = 0.10
+RANDOM_FOREST_N_ESTIMATORS = 300
+RANDOM_FOREST_MIN_SAMPLES_LEAF = 3
 RANDOM_STATE = 42
 
 NUMERIC_FEATURES = [
@@ -129,7 +131,7 @@ def train_value_regression(
     margin, which keeps complexity from hiding a mediocre structural signal.
     """
     df = load_latest_feature_matrix() if feature_matrix is None else feature_matrix.copy()
-    training_df = _training_rows(df)
+    training_df = select_training_rows(df)
     training_count = len(training_df)
     if training_count < min_training_samples:
         raise InsufficientTrainingDataError(
@@ -139,7 +141,7 @@ def train_value_regression(
 
     x = prepare_feature_frame(training_df)
     y = np.log(pd.to_numeric(training_df["value"], errors="coerce").astype(float))
-    test_size = 0.25 if training_count >= 40 else max(0.2, min(0.35, 8 / training_count))
+    test_size = value_regression_test_size(training_count)
     x_train, x_test, y_train, y_test = train_test_split(
         x,
         y,
@@ -162,8 +164,8 @@ def train_value_regression(
     if linear_metrics.r2_log < LINEAR_INADEQUATE_R2 or linear_unstable:
         forest_pipeline = _build_pipeline(
             RandomForestRegressor(
-                n_estimators=300,
-                min_samples_leaf=3,
+                n_estimators=RANDOM_FOREST_N_ESTIMATORS,
+                min_samples_leaf=RANDOM_FOREST_MIN_SAMPLES_LEAF,
                 random_state=random_state,
             ),
             scale_numeric=False,
@@ -388,10 +390,18 @@ def encode_feature_frame(model: ValueRegressionResult, df: pd.DataFrame) -> pd.D
     return pd.DataFrame(encoded, columns=model.feature_names, index=df.index)
 
 
-def _training_rows(df: pd.DataFrame) -> pd.DataFrame:
+def select_training_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Return positive-value rows with gpovalues medium/high confidence."""
     confidence = df["confidence"].fillna("").astype(str).str.lower()
     values = pd.to_numeric(df.get("value"), errors="coerce")
     return df[confidence.isin(CONFIDENT_TRAINING_LABELS) & values.notna() & (values > 0)].copy()
+
+
+def value_regression_test_size(training_count: int) -> float:
+    """Return the configured held-out fraction for a training-row count."""
+    if training_count < 1:
+        raise ValueError("training_count must be greater than zero.")
+    return 0.25 if training_count >= 40 else max(0.2, min(0.35, 8 / training_count))
 
 
 def _build_pipeline(estimator: object, *, scale_numeric: bool = True) -> Pipeline:
