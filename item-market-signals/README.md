@@ -112,6 +112,7 @@ Inspect or update the private log:
 
 ```bash
 python scripts/run_decision_log.py list
+python scripts/run_decision_log.py summary
 python scripts/run_decision_log.py show <decision_id>
 python scripts/run_decision_log.py marked-outcome <decision_id>
 python scripts/run_decision_log.py record-resale <decision_id> --resale-price 3100000 --resale-date 2026-10-10
@@ -119,6 +120,13 @@ python scripts/run_decision_log.py record-resale <decision_id> --resale-price 31
 
 Resale fields are for actual completed sales only. Future marked gpovalues
 values are separate fields and should not be described as realized profit.
+
+The read-only `summary` command reports aggregate buy/no-buy and saved-verdict
+counts, open bought positions, completed actual resales, and gross recorded
+resale results where both purchase and resale prices are valid and positive.
+Completed resales without a purchase price are counted but excluded from the
+gross calculation with an explicit reason. It does not read `marked_value*`
+fields or treat gpovalues published-estimate movement as an actual transaction.
 
 The `marked-outcome` command is read-only. It calculates `decision_date + 14
 days`, then uses the first available `gpovalues_YYYY-MM-DD.csv` snapshot on or
