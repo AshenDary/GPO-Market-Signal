@@ -226,9 +226,13 @@ of being silently filled.
 The page also shows market-wide published-value context for the latest-vs-
 previous comparison window. That context counts items with one unambiguous row
 in both snapshots and valid positive published values, then reports the median
-percentage change plus how many comparable items rose, fell, or stayed flat. It
-is a backdrop for interpreting item alerts and does not claim a cause for broad
-movement.
+percentage change plus the count and percentage that rose, fell, or stayed
+flat. With at least three comparable items, a 60% or greater rising/falling
+share is labeled `mostly_rising` or `mostly_falling`; other windows are
+`mixed`. The optional review control groups fired published-value alerts by
+whether they moved with or against that direction while retaining the default
+view of all alerts. This context is descriptive: it does not infer a cause or
+make a buy/sell recommendation.
 
 The default alert rules are intentionally simple and shown on the dashboard:
 
@@ -240,6 +244,8 @@ The default alert rules are intentionally simple and shown on the dashboard:
 - minimum history: at least three unambiguous snapshot dates for the item
 - stale snapshot notice: latest snapshot is more than two days older than the
   report `as_of` date
+- broad direction: at least three comparable items and a 60% rising or falling
+  share; this classifies context and never changes whether an item alert fires
 
 `trade_count` is a gpovalues activity indicator and can decrease between
 snapshots. Alert text must not describe it as daily trade volume or as a count

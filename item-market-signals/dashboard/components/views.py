@@ -1189,6 +1189,8 @@ def _render_alert_rules(result: MarketChangeAlertResult) -> None:
             ("Published value rule", f"{rules.value_change_pct_threshold:.0f}% and {rules.value_change_min_abs:,.0f}+ units"),
             ("Demand-ratio rule", f"{rules.demand_ratio_abs_change_threshold:.2f}+ point change"),
             ("Activity rule", f"{rules.activity_change_pct_threshold:.0f}% and {rules.activity_change_min_abs:,.0f}+ count change"),
+            ("Broad direction", f"{rules.market_direction_dominance_pct:.0f}%+ share"),
+            ("Broad coverage", f"{rules.market_direction_min_comparable_items}+ comparable items"),
             ("Extreme guards", f"value>{rules.max_reasonable_value:,.0f}, demand>{rules.max_reasonable_demand_ratio:g}, activity>{rules.max_reasonable_trade_count:,.0f}"),
         ],
         class_name="metric-grid--three",
@@ -1209,21 +1211,38 @@ def _render_market_value_context(metadata: dict[str, object]) -> None:
     _section_title("Market-wide value context")
     current_date = context.get("current_date") or metadata.get("latest_snapshot_date")
     comparison_date = context.get("comparison_date") or metadata.get("comparison_snapshot_date")
+    direction = str(context.get("direction", "insufficient_comparable_data")).replace("_", " ").title()
     render_metric_cards(
         [
             ("Comparison window", f"{comparison_date or 'n/a'} to {current_date or 'n/a'}"),
+            ("Broad direction", direction),
             ("Compared items", f"{int(context.get('compared_items') or 0):,}"),
             ("Median value change", _format_signed_percent(context.get("median_percent_change"))),
-            ("Rose", f"{int(context.get('rose_count') or 0):,}"),
-            ("Fell", f"{int(context.get('fell_count') or 0):,}"),
-            ("Flat", f"{int(context.get('flat_count') or 0):,}"),
+            (
+                "Rose",
+                f"{int(context.get('rose_count') or 0):,} ({_format_signed_percent(context.get('rose_percentage')).lstrip('+')})",
+            ),
+            (
+                "Fell",
+                f"{int(context.get('fell_count') or 0):,} ({_format_signed_percent(context.get('fell_percentage')).lstrip('+')})",
+            ),
+            (
+                "Flat",
+                f"{int(context.get('flat_count') or 0):,} ({_format_signed_percent(context.get('flat_percentage')).lstrip('+')})",
+            ),
+            (
+                "Direction rule",
+                f"{float(context.get('dominance_threshold_pct') or 0):g}%+ of "
+                f"{int(context.get('minimum_comparable_items') or 0)}+ items",
+            ),
         ],
         class_name="metric-grid--three",
     )
     _notice(
         "This context compares gpovalues published values for items with one unambiguous row "
         "in both snapshots and valid positive values. It helps interpret item alerts against "
-        "wider latest-vs-previous movement; it does not explain why values moved."
+        "wider latest-vs-previous movement; it is descriptive, does not explain why values moved, "
+        "and is not a buy or sell recommendation."
     )
     if context.get("status") != "ready" and context.get("reason"):
         _notice(str(context["reason"]))
@@ -1355,7 +1374,7 @@ def render_market_change_alerts(result: MarketChangeAlertResult) -> None:
         use_container_width=True,
     )
 
-    col_a, col_b, col_c = st.columns(3)
+    col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
         selected_type = st.selectbox(
             "Alert type",
@@ -1370,6 +1389,18 @@ def render_market_change_alerts(result: MarketChangeAlertResult) -> None:
             ["All", *sorted(evaluations["status"].dropna().unique())],
             key="market_change_status",
         )
+    with col_d:
+        alignment_labels = {
+            "All": "All",
+            "With broad direction": "with_broad_direction",
+            "Against broad direction": "against_broad_direction",
+            "Mixed or insufficient window": "mixed_or_insufficient",
+        }
+        selected_alignment = st.selectbox(
+            "Broad-market review",
+            list(alignment_labels),
+            key="market_change_broad_alignment",
+        )
 
     table = alerts if fired_only else evaluations
     if selected_type != "All":
@@ -1377,6 +1408,11 @@ def render_market_change_alerts(result: MarketChangeAlertResult) -> None:
         table = table[table["alert_type"] == inverse_labels[selected_type]]
     if selected_status != "All":
         table = table[table["status"] == selected_status]
+    if selected_alignment != "All":
+        table = table[
+            (table["alert_type"] == "value_movement")
+            & (table["broad_market_alignment"] == alignment_labels[selected_alignment])
+        ]
 
     item_filter = st.text_input("Filter item name", key="market_change_item_filter")
     if item_filter.strip():
@@ -1395,6 +1431,7 @@ def render_market_change_alerts(result: MarketChangeAlertResult) -> None:
             "absolute_change",
             "percent_change",
             "direction",
+            "broad_market_alignment",
             "item_snapshot_dates",
             "reason",
         ]
@@ -1410,12 +1447,21 @@ def render_market_change_alerts(result: MarketChangeAlertResult) -> None:
             "absolute_change": "Change",
             "percent_change": "Change %",
             "direction": "Direction",
+            "broad_market_alignment": "Broad-market review",
             "item_snapshot_dates": "History dates",
             "reason": "Exact reason",
         }
     )
     if not display.empty:
         display["Alert type"] = display["Alert type"].map(_alert_type_label)
+        display["Broad-market review"] = display["Broad-market review"].map(
+            {
+                "with_broad_direction": "With broad direction",
+                "against_broad_direction": "Against broad direction",
+                "mixed_or_insufficient": "Mixed or insufficient window",
+                "not_applicable": "Not applicable",
+            }
+        )
     selection = st.dataframe(
         display,
         hide_index=True,
