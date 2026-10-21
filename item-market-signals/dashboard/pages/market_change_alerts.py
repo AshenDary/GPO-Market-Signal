@@ -13,6 +13,12 @@ render_refresh_button("refresh_market_change_alerts")
 
 try:
     snapshot_quality_result = load_snapshot_quality_preflight()
+except (FileNotFoundError, ValueError) as exc:
+    st.warning(f"Snapshot quality preflight unavailable: {exc}")
+else:
+    render_snapshot_quality_preflight(snapshot_quality_result)
+
+try:
     market_change_result = load_market_change_alerts()
 except FileNotFoundError as exc:
     st.error(str(exc))
@@ -21,5 +27,4 @@ except ValueError as exc:
     st.warning(str(exc))
     st.stop()
 
-render_snapshot_quality_preflight(snapshot_quality_result)
 render_market_change_alerts(market_change_result)

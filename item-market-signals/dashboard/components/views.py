@@ -1182,6 +1182,8 @@ def _alert_type_label(alert_type: object) -> str:
 
 
 def _snapshot_metric_quality_text(row: pd.Series, metric: str) -> str:
+    if row["read_error"]:
+        return "unavailable"
     labels = {"non_numeric": "non-numeric"}
     counts = [
         f"{labels.get(category, category)} {int(row[f'{metric}_{category}_count'])}"
@@ -1191,11 +1193,25 @@ def _snapshot_metric_quality_text(row: pd.Series, metric: str) -> str:
     return ", ".join(counts) if counts else "clean"
 
 
+def _snapshot_identity_quality_text(row: pd.Series) -> str:
+    if row["read_error"]:
+        return "unavailable"
+    return (
+        f"missing {int(row['missing_identity_count'])}, "
+        f"duplicate identities {int(row['duplicate_identity_count'])}"
+    )
+
+
 def render_snapshot_quality_preflight(result: SnapshotQualityResult) -> None:
     """Render a compact, non-blocking quality summary for saved snapshots."""
     _section_title("Snapshot quality preflight")
     summary = result.summary
     rows = result.snapshots.copy()
+    row_range = (
+        f"{int(summary['minimum_row_count']):,} to {int(summary['maximum_row_count']):,}"
+        if summary["minimum_row_count"] is not None
+        else "n/a"
+    )
     render_metric_cards(
         [
             ("Snapshot dates", f"{int(summary['snapshot_count']):,}"),
@@ -1205,11 +1221,9 @@ def render_snapshot_quality_preflight(result: SnapshotQualityResult) -> None:
             ),
             ("Missing dates", f"{int(summary['missing_calendar_date_count']):,}"),
             ("Dates with concerns", f"{int(summary['quality_concern_snapshot_count']):,}"),
+            ("Unreadable dates", f"{int(summary['unreadable_snapshot_count']):,}"),
             ("Coverage changes", f"{int(summary['coverage_change_snapshot_count']):,}"),
-            (
-                "Rows per snapshot",
-                f"{int(summary['minimum_row_count']):,} to {int(summary['maximum_row_count']):,}",
-            ),
+            ("Rows per readable snapshot", row_range),
         ],
         class_name="metric-grid--three",
     )
@@ -1231,13 +1245,7 @@ def render_snapshot_quality_preflight(result: SnapshotQualityResult) -> None:
         _notice("No snapshot date has a quality concern or a change in item coverage.")
         return
 
-    review_rows["identity_quality"] = review_rows.apply(
-        lambda row: (
-            f"missing {int(row['missing_identity_count'])}, "
-            f"duplicate identities {int(row['duplicate_identity_count'])}"
-        ),
-        axis=1,
-    )
+    review_rows["identity_quality"] = review_rows.apply(_snapshot_identity_quality_text, axis=1)
     for metric in ("value", "demand_ratio", "trade_count"):
         review_rows[f"{metric}_quality"] = review_rows.apply(
             lambda row, selected_metric=metric: _snapshot_metric_quality_text(row, selected_metric),
@@ -1247,6 +1255,7 @@ def render_snapshot_quality_preflight(result: SnapshotQualityResult) -> None:
     display = review_rows[
         [
             "snapshot_date",
+            "read_error",
             "row_count",
             "unique_identity_count",
             "added_identity_count",
@@ -1259,6 +1268,7 @@ def render_snapshot_quality_preflight(result: SnapshotQualityResult) -> None:
     ].rename(
         columns={
             "snapshot_date": "Snapshot date",
+            "read_error": "Read error",
             "row_count": "Rows",
             "unique_identity_count": "Unique identities",
             "added_identity_count": "Added",
@@ -1270,7 +1280,7 @@ def render_snapshot_quality_preflight(result: SnapshotQualityResult) -> None:
         }
     )
     with st.expander("Review snapshot dates with concerns or coverage changes", expanded=False):
-        st.dataframe(display, hide_index=True, use_container_width=True)
+        st.dataframe(display, hide_index=True, width="stretch")
         _notice(
             "Added and removed counts compare each date with the preceding available snapshot. "
             "They describe source coverage changes and are not automatically data errors."

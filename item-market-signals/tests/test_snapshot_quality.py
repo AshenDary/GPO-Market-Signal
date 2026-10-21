@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 import requests
+from streamlit.testing.v1 import AppTest
 
 from market_signals.analysis.market_change_alerts import MarketChangeAlertRules
 from market_signals.analysis.snapshot_quality import (
@@ -142,6 +143,71 @@ def test_metric_quality_categories_are_separate_and_reuse_alert_limits(tmp_path:
 def test_empty_directory_is_explicit(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="No gpovalues snapshots"):
         run_snapshot_quality_preflight(tmp_path / "empty")
+
+
+def test_headerless_empty_snapshot_is_visible_as_a_quality_concern(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    snapshot_dir.mkdir()
+    (snapshot_dir / "gpovalues_2026-09-01.csv").write_text("")
+
+    result = run_snapshot_quality_preflight(snapshot_dir)
+    row = _snapshot(result, "2026-09-01")
+
+    assert row["row_count"] == 0
+    assert bool(row["is_empty"])
+    assert bool(row["has_quality_concerns"])
+    assert result.summary["empty_snapshot_count"] == 1
+
+
+def test_malformed_snapshot_is_reported_without_fabricated_counts(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(snapshot_dir, "2026-09-01", [_row("Candy Cane")])
+    malformed = snapshot_dir / "gpovalues_2026-09-02.csv"
+    malformed.write_text('slug,name\n"unterminated,row\n')
+    before = malformed.read_bytes()
+    _write_snapshot(snapshot_dir, "2026-09-03", [_row("Candy Cane"), _row("New Item")])
+
+    result = run_snapshot_quality_preflight(snapshot_dir)
+    bad = _snapshot(result, "2026-09-02")
+    after = _snapshot(result, "2026-09-03")
+
+    assert result.summary["unreadable_snapshot_count"] == 1
+    assert bad["read_error"] == "CSV parse error"
+    assert pd.isna(bad["row_count"])
+    assert pd.isna(bad["value_missing_count"])
+    assert bool(bad["has_quality_concerns"])
+    assert after["added_identity_count"] == 1
+    assert after["removed_identity_count"] == 0
+    assert malformed.read_bytes() == before
+
+
+def test_all_unreadable_snapshots_leave_row_range_unknown(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    snapshot_dir.mkdir()
+    (snapshot_dir / "gpovalues_2026-09-01.csv").write_text('slug,name\n"unterminated,row\n')
+
+    result = run_snapshot_quality_preflight(snapshot_dir)
+
+    assert result.summary["minimum_row_count"] is None
+    assert result.summary["maximum_row_count"] is None
+    assert result.summary["quality_concern_snapshot_count"] == 1
+
+
+def test_preflight_renders_unreadable_date_without_dashboard_exception(tmp_path: Path) -> None:
+    snapshot_dir = tmp_path / "snapshots"
+    snapshot_dir.mkdir()
+    (snapshot_dir / "gpovalues_2026-09-01.csv").write_text('slug,name\n"unterminated,row\n')
+    script = (
+        "from pathlib import Path\n"
+        "from market_signals.analysis.snapshot_quality import run_snapshot_quality_preflight\n"
+        "from dashboard.components.views import render_snapshot_quality_preflight\n"
+        f"render_snapshot_quality_preflight(run_snapshot_quality_preflight(Path({str(snapshot_dir)!r})))\n"
+    )
+
+    page = AppTest.from_string(script).run(timeout=30)
+
+    assert not page.exception
+    assert len(page.dataframe) == 1
 
 
 def test_preflight_never_calls_network_or_writes_files(tmp_path: Path, monkeypatch) -> None:

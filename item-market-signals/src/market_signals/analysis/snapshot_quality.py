@@ -60,6 +60,9 @@ def run_snapshot_quality_preflight(
             frame = pd.read_csv(path)
         except pd.errors.EmptyDataError:
             frame = pd.DataFrame()
+        except (pd.errors.ParserError, UnicodeDecodeError) as exc:
+            records.append(_unreadable_snapshot_record(snapshot_date, path, exc))
+            continue
 
         record, current_identities = _snapshot_quality_record(
             frame,
@@ -77,6 +80,7 @@ def run_snapshot_quality_preflight(
 
     dates = [date.fromisoformat(value) for value in snapshots["snapshot_date"]]
     missing_dates = _missing_calendar_dates(dates)
+    row_counts = pd.to_numeric(snapshots["row_count"], errors="coerce").dropna()
     metric_totals = {
         metric: {
             category: int(snapshots[f"{metric}_{category}_count"].sum())
@@ -91,11 +95,12 @@ def run_snapshot_quality_preflight(
         "expected_calendar_date_count": (max(dates) - min(dates)).days + 1,
         "missing_calendar_dates": tuple(value.isoformat() for value in missing_dates),
         "missing_calendar_date_count": len(missing_dates),
-        "minimum_row_count": int(snapshots["row_count"].min()),
-        "maximum_row_count": int(snapshots["row_count"].max()),
+        "minimum_row_count": int(row_counts.min()) if not row_counts.empty else None,
+        "maximum_row_count": int(row_counts.max()) if not row_counts.empty else None,
         "quality_concern_snapshot_count": int(snapshots["has_quality_concerns"].sum()),
         "coverage_change_snapshot_count": int(snapshots["has_coverage_change"].sum()),
         "empty_snapshot_count": int(snapshots["is_empty"].sum()),
+        "unreadable_snapshot_count": int(snapshots["read_error"].ne("").sum()),
         "missing_identity_row_count": int(snapshots["missing_identity_count"].sum()),
         "duplicate_identity_count": int(snapshots["duplicate_identity_count"].sum()),
         "duplicate_identity_row_count": int(snapshots["duplicate_identity_row_count"].sum()),
@@ -139,6 +144,7 @@ def _snapshot_quality_record(
         "added_identity_count": added_identity_count,
         "removed_identity_count": removed_identity_count,
         "is_empty": frame.empty,
+        "read_error": "",
     }
 
     metric_issue_count = 0
@@ -164,6 +170,29 @@ def _snapshot_quality_record(
         and ((added_identity_count or 0) > 0 or (removed_identity_count or 0) > 0)
     )
     return record, current_identities
+
+
+def _unreadable_snapshot_record(snapshot_date: date, path: Path, error: Exception) -> dict[str, object]:
+    record: dict[str, object] = {
+        "snapshot_date": snapshot_date.isoformat(),
+        "snapshot_file": path.name,
+        "row_count": pd.NA,
+        "unique_identity_count": pd.NA,
+        "missing_identity_count": pd.NA,
+        "duplicate_identity_count": pd.NA,
+        "duplicate_identity_row_count": pd.NA,
+        "added_identity_count": pd.NA,
+        "removed_identity_count": pd.NA,
+        "is_empty": False,
+        "read_error": "CSV parse error" if isinstance(error, pd.errors.ParserError) else "invalid text encoding",
+        "quality_issue_count": 1,
+        "has_quality_concerns": True,
+        "has_coverage_change": False,
+    }
+    for metric in METRICS:
+        for category in QUALITY_CATEGORIES:
+            record[f"{metric}_{category}_count"] = pd.NA
+    return record
 
 
 def _metric_quality_counts(frame: pd.DataFrame, column: str, extreme_limit: float) -> dict[str, int]:
@@ -221,6 +250,7 @@ def _result_columns() -> list[str]:
         "added_identity_count",
         "removed_identity_count",
         "is_empty",
+        "read_error",
     ]
     for metric in METRICS:
         columns.extend(f"{metric}_{category}_count" for category in QUALITY_CATEGORIES)

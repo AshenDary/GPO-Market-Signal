@@ -225,8 +225,11 @@ count units. These are inspection thresholds, not claims about market behavior.
 Zero `value` is a concern because historical percentage comparisons require a
 positive denominator; zero demand ratio and zero `trade_count` remain valid
 nonnegative source values and are counted only for visibility. The preflight
-does not modify data or block either analysis, and item additions/removals are
-coverage context rather than automatic errors.
+does not modify data or gate either analysis, and item additions/removals are
+coverage context rather than automatic errors. Empty files are flagged;
+unreadable CSVs retain their date but have unknown counts. Coverage changes
+after an unreadable date compare against the preceding readable snapshot.
+An unreadable input can still prevent the underlying alert or lab analysis.
 
 Market Change Alerts are daily review leads, not buy or sell recommendations.
 They evaluate every item row in the latest `gpovalues_*.csv` snapshot against
