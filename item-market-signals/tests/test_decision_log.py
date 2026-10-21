@@ -636,6 +636,29 @@ def test_empty_decision_summary_has_clear_zero_results() -> None:
     assert summary.gross_recorded_resale_percentage is None
 
 
+def test_summary_keeps_price_only_and_invalid_resales_incomplete() -> None:
+    log = pd.DataFrame(
+        [
+            _decision_summary_row(decision_id="valid", purchase_price=80, resale_price=120, resale_date="2026-10-01"),
+            _decision_summary_row(decision_id="price-only", purchase_price=80, resale_price=900),
+            _decision_summary_row(decision_id="bad-date", purchase_price=80, resale_price=900, resale_date="not-a-date"),
+            _decision_summary_row(decision_id="bad-price", purchase_price=80, resale_price="not-a-price"),
+            _decision_summary_row(decision_id="infinite-purchase", purchase_price=float("inf"), resale_price=100, resale_date="2026-10-01"),
+        ],
+        columns=DECISION_COLUMNS,
+    )
+
+    summary = summarize_decision_log(log)
+
+    assert summary.completed_actual_resale_count == 2
+    assert summary.incomplete_resale_record_count == 3
+    assert summary.bought_awaiting_resale_count == 3
+    assert summary.completed_resales_missing_purchase_price_count == 1
+    assert summary.gross_result_resale_count == 1
+    assert summary.gross_recorded_resale_difference == pytest.approx(40)
+    assert summary.gross_recorded_resale_percentage == pytest.approx(50)
+
+
 def test_cli_summary_uses_selected_log_without_modifying_or_printing_entries(tmp_path: Path) -> None:
     log_path = tmp_path / "private-decisions.csv"
     private_item = "PRIVATE ITEM NAME"

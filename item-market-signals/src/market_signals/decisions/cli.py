@@ -243,6 +243,7 @@ def _format_summary(summary: DecisionLogSummary, log_path: Path) -> str:
         f"  Buy decisions                                 : {summary.buy_decision_count}",
         f"  No-buy decisions                              : {summary.no_buy_decision_count}",
         f"  Bought positions awaiting resale              : {summary.bought_awaiting_resale_count}",
+        f"  Incomplete resale records                     : {summary.incomplete_resale_record_count}",
         f"  Completed actual resales                      : {summary.completed_actual_resale_count}",
         "  Completed resales excluded from gross result  : "
         f"{summary.completed_resales_missing_purchase_price_count} "

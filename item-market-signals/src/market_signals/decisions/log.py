@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from math import isfinite
 from pathlib import Path
 from uuid import uuid4
 
@@ -115,6 +116,7 @@ class DecisionLogSummary:
     no_buy_decision_count: int
     saved_verdict_counts: dict[str, int]
     bought_awaiting_resale_count: int
+    incomplete_resale_record_count: int
     completed_actual_resale_count: int
     completed_resales_missing_purchase_price_count: int
     gross_result_resale_count: int
@@ -306,6 +308,7 @@ def summarize_decision_log(log: pd.DataFrame) -> DecisionLogSummary:
             no_buy_decision_count=0,
             saved_verdict_counts={},
             bought_awaiting_resale_count=0,
+            incomplete_resale_record_count=0,
             completed_actual_resale_count=0,
             completed_resales_missing_purchase_price_count=0,
             gross_result_resale_count=0,
@@ -317,11 +320,17 @@ def summarize_decision_log(log: pd.DataFrame) -> DecisionLogSummary:
 
     bought = _column_or_blank(log, "bought").map(_as_bool)
     purchase_prices = pd.to_numeric(_column_or_blank(log, "purchase_price"), errors="coerce")
-    resale_prices = pd.to_numeric(_column_or_blank(log, "resale_price"), errors="coerce")
-    valid_purchase = purchase_prices.notna() & (purchase_prices > 0)
-    valid_resale = resale_prices.notna() & (resale_prices > 0)
+    raw_resale_prices = _column_or_blank(log, "resale_price")
+    resale_prices = pd.to_numeric(raw_resale_prices, errors="coerce")
+    resale_dates = _column_or_blank(log, "resale_date")
+    valid_purchase = purchase_prices.map(_is_positive_finite)
+    valid_resale_price = resale_prices.map(_is_positive_finite)
+    valid_resale = valid_resale_price & resale_dates.map(_is_iso_resale_date)
     completed_resales = bought & valid_resale
     gross_result_rows = completed_resales & valid_purchase
+    has_resale_detail = raw_resale_prices.map(lambda value: not _is_blank(value)) | resale_dates.map(
+        lambda value: not _is_blank(value)
+    )
 
     purchase_total = float(purchase_prices[gross_result_rows].sum())
     resale_total = float(resale_prices[gross_result_rows].sum())
@@ -343,6 +352,7 @@ def summarize_decision_log(log: pd.DataFrame) -> DecisionLogSummary:
         no_buy_decision_count=int((~bought).sum()),
         saved_verdict_counts=verdict_counts,
         bought_awaiting_resale_count=int((bought & ~valid_resale).sum()),
+        incomplete_resale_record_count=int((bought & has_resale_detail & ~valid_resale).sum()),
         completed_actual_resale_count=int(completed_resales.sum()),
         completed_resales_missing_purchase_price_count=int(
             (completed_resales & ~valid_purchase).sum()
@@ -561,6 +571,20 @@ def _column_or_blank(frame: pd.DataFrame, column: str) -> pd.Series:
     if column in frame.columns:
         return frame[column]
     return pd.Series("", index=frame.index, dtype=object)
+
+
+def _is_positive_finite(value: object) -> bool:
+    return not _is_blank(value) and isfinite(float(value)) and float(value) > 0
+
+
+def _is_iso_resale_date(value: object) -> bool:
+    if _is_blank(value):
+        return False
+    try:
+        date.fromisoformat(str(value).strip())
+    except ValueError:
+        return False
+    return True
 
 
 def _parse_resale_date(value: date | str | None) -> date:
