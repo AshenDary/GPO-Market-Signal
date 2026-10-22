@@ -31,6 +31,8 @@ class MarketChangeAlertRules:
     demand_ratio_abs_change_threshold: float = 1.0
     activity_change_pct_threshold: float = 50.0
     activity_change_min_abs: float = 100.0
+    market_direction_dominance_pct: float = 60.0
+    market_direction_min_comparable_items: int = 3
     max_reasonable_value: float = 100_000_000.0
     max_reasonable_demand_ratio: float = 50.0
     max_reasonable_trade_count: float = 1_000_000.0
@@ -92,9 +94,20 @@ def run_market_change_alerts(
                 )
             )
 
+    market_value_context = _market_value_context(snapshots, rules)
     evaluations = pd.DataFrame(records, columns=_evaluation_columns())
+    evaluations["broad_market_alignment"] = evaluations.apply(
+        lambda row: _broad_market_alignment(row, market_value_context),
+        axis=1,
+    )
     alerts = evaluations[evaluations["fired"]].copy().reset_index(drop=True)
-    metadata = _metadata(snapshots, evaluations, rules, effective_as_of)
+    metadata = _metadata(
+        snapshots,
+        evaluations,
+        rules,
+        effective_as_of,
+        market_value_context,
+    )
 
     return MarketChangeAlertResult(
         evaluations=evaluations.reset_index(drop=True),
@@ -436,6 +449,7 @@ def _metadata(
     evaluations: pd.DataFrame,
     rules: MarketChangeAlertRules,
     as_of: date,
+    market_value_context: dict[str, object],
 ) -> dict[str, object]:
     latest_date = snapshots[-1].snapshot_date
     days_since_latest = (as_of - latest_date).days
@@ -456,7 +470,7 @@ def _metadata(
         "demand_alert_count": int((fired["alert_type"] == "demand_change").sum()),
         "activity_alert_count": int((fired["alert_type"] == "activity_change").sum()),
         "guard_counts": evaluations["status"].value_counts().to_dict(),
-        "market_value_context": _market_value_context(snapshots, rules),
+        "market_value_context": market_value_context,
         "rules": asdict(rules),
     }
 
@@ -475,6 +489,12 @@ def _market_value_context(
         "rose_count": 0,
         "fell_count": 0,
         "flat_count": 0,
+        "rose_percentage": None,
+        "fell_percentage": None,
+        "flat_percentage": None,
+        "direction": "insufficient_comparable_data",
+        "dominance_threshold_pct": rules.market_direction_dominance_pct,
+        "minimum_comparable_items": rules.market_direction_min_comparable_items,
         "status": "insufficient_comparable_data",
         "reason": "",
     }
@@ -524,19 +544,66 @@ def _market_value_context(
             ),
         }
 
+    compared_items = len(changes)
+    rose_percentage = (rose_count / compared_items) * 100
+    fell_percentage = (fell_count / compared_items) * 100
+    flat_percentage = (flat_count / compared_items) * 100
+    if compared_items < rules.market_direction_min_comparable_items:
+        return {
+            **base,
+            "compared_items": compared_items,
+            "median_percent_change": round(float(pd.Series(changes).median()), 4),
+            "rose_count": rose_count,
+            "fell_count": fell_count,
+            "flat_count": flat_count,
+            "rose_percentage": round(rose_percentage, 4),
+            "fell_percentage": round(fell_percentage, 4),
+            "flat_percentage": round(flat_percentage, 4),
+            "reason": (
+                f"Need at least {rules.market_direction_min_comparable_items} comparable items "
+                f"to classify broad direction; found {compared_items}."
+            ),
+        }
+
+    direction = "mixed"
+    if rose_percentage >= rules.market_direction_dominance_pct:
+        direction = "mostly_rising"
+    elif fell_percentage >= rules.market_direction_dominance_pct:
+        direction = "mostly_falling"
+
     return {
         **base,
-        "compared_items": len(changes),
+        "compared_items": compared_items,
         "median_percent_change": round(float(pd.Series(changes).median()), 4),
         "rose_count": rose_count,
         "fell_count": fell_count,
         "flat_count": flat_count,
+        "rose_percentage": round(rose_percentage, 4),
+        "fell_percentage": round(fell_percentage, 4),
+        "flat_percentage": round(flat_percentage, 4),
+        "direction": direction,
         "status": "ready",
         "reason": (
             "Compared items with one unambiguous row in both snapshots and valid positive "
             "published values."
         ),
     }
+
+
+def _broad_market_alignment(
+    evaluation: pd.Series,
+    market_value_context: dict[str, object],
+) -> str:
+    if evaluation.get("alert_type") != "value_movement" or not bool(evaluation.get("fired")):
+        return "not_applicable"
+
+    market_direction = str(market_value_context.get("direction", ""))
+    item_direction = str(evaluation.get("direction", ""))
+    if market_direction == "mostly_rising":
+        return "with_broad_direction" if item_direction == "up" else "against_broad_direction"
+    if market_direction == "mostly_falling":
+        return "with_broad_direction" if item_direction == "down" else "against_broad_direction"
+    return "mixed_or_insufficient"
 
 
 def _guard_reason(status: str, base: dict[str, object]) -> str:
@@ -563,8 +630,17 @@ def _validate_rules(rules: MarketChangeAlertRules) -> None:
         raise ValueError("minimum_item_snapshot_dates must be at least 2.")
     if rules.stale_snapshot_days < 0:
         raise ValueError("stale_snapshot_days cannot be negative.")
+    if rules.market_direction_min_comparable_items < 1:
+        raise ValueError("market_direction_min_comparable_items must be at least 1.")
+    if not 50 < rules.market_direction_dominance_pct <= 100:
+        raise ValueError("market_direction_dominance_pct must be greater than 50 and at most 100.")
     for name, value in asdict(rules).items():
-        if name in {"minimum_item_snapshot_dates", "stale_snapshot_days"}:
+        if name in {
+            "minimum_item_snapshot_dates",
+            "stale_snapshot_days",
+            "market_direction_dominance_pct",
+            "market_direction_min_comparable_items",
+        }:
             continue
         if value <= 0:
             raise ValueError(f"{name} must be greater than zero.")
@@ -628,6 +704,7 @@ def _evaluation_columns() -> list[str]:
         "absolute_change",
         "percent_change",
         "direction",
+        "broad_market_alignment",
         "reason",
     ]
 
