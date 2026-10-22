@@ -38,7 +38,8 @@ class ValueModelCaseStudy:
 
     provenance: dict[str, object]
     model_summary: dict[str, object]
-    held_out_metrics: pd.DataFrame
+    selection_metrics: pd.DataFrame
+    final_test_metrics: pd.DataFrame
     residual_examples: pd.DataFrame
     feature_importance: pd.DataFrame
     shap_summary: dict[str, object] | None
@@ -68,7 +69,7 @@ def build_value_model_case_study(
     min_training_samples: int = MIN_TRAINING_SAMPLES,
     random_state: int = RANDOM_STATE,
 ) -> ValueModelCaseStudy:
-    """Build deterministic held-out, residual, importance, and SHAP artifacts."""
+    """Build deterministic selection, final-test, residual, and SHAP artifacts."""
     model = train_value_regression(
         feature_matrix,
         min_training_samples=min_training_samples,
@@ -109,7 +110,13 @@ def build_value_model_case_study(
     return ValueModelCaseStudy(
         provenance=_provenance(feature_matrix, training_rows, input_path, random_state),
         model_summary=_model_summary(model, len(training_rows)),
-        held_out_metrics=_held_out_metrics(model),
+        selection_metrics=_metrics_table(
+            model.selection_metrics,
+            model.baseline_selection_metrics,
+            model.model_type,
+            "selection partition",
+        ),
+        final_test_metrics=_final_test_metrics(model),
         residual_examples=residual_examples,
         feature_importance=importance,
         shap_summary=shap_summary,
@@ -138,20 +145,28 @@ def render_value_model_case_study(case_study: ValueModelCaseStudy) -> str:
         "## Implemented Method",
         "",
         "Only positive-value rows with gpovalues confidence labeled medium or high are eligible. "
-        "The target is `log(value)`. The current code uses one deterministic random train/test split, "
-        "fits a linear baseline, and selects RandomForest only when the guarded selection rule is met. "
-        "After held-out evaluation and model selection, the selected pipeline is refit on every eligible row.",
+        "The target is `log(value)`. A deterministic random approximately 60/20/20 split separates initial "
+        "fitting, model selection, and final testing. The linear stability guard sees observed rows "
+        "outside the final test partition. Candidate models are compared only on the selection "
+        "partition. After final testing, the chosen pipeline is refit on every eligible row.",
         "",
         _markdown_table(model_summary),
         "",
-        "## Held-Out Validation Metrics",
+        "## Selection Metrics",
         "",
-        "These metrics are evaluated on the test partition before the selected model is refit on all "
-        "eligible rows. The selection procedure also checks linear prediction stability on all "
-        "observed rows, including possible test rows, so this is not a fully isolated holdout. "
-        "Log-space and value-unit errors are reported separately.",
+        "These scores guide model choice and are not unbiased holdout estimates. The stability "
+        "guard also checks observed development rows, including rows outside the eligible set.",
         "",
-        _markdown_table(case_study.held_out_metrics),
+        _markdown_table(case_study.selection_metrics),
+        "",
+        "## Final Test Metrics",
+        "",
+        "The final test partition is untouched by preprocessing fits, model choice, and the "
+        "stability guard. These metrics are evaluated once after selection and before the "
+        "all-eligible-row refit. The linear baseline is shown for context, not used to revisit "
+        "the choice. Log-space and value-unit errors are reported separately.",
+        "",
+        _markdown_table(case_study.final_test_metrics),
         "",
         "## In-Sample Structural Residual Diagnostics",
         "",
@@ -196,9 +211,10 @@ def render_value_model_case_study(case_study: ValueModelCaseStudy) -> str:
             "",
             "## Limitations",
             "",
-            "- One random split is not a stability study or time-based validation.",
-            "- Linear stability checks inspect all observed rows, so the test partition is not fully "
-            "isolated from model selection.",
+            "- One random item-level split is not a stability study or time-based validation; "
+            "selection scores are not unbiased holdout estimates.",
+            "- Small selection/test partitions make metrics noisy; duplicate item identities or "
+            "shared market context can still limit generalization.",
             "- The model uses a limited structural feature set and may miss item-specific market context.",
             "- Inputs and results depend on the committed feature-matrix snapshot identified above.",
             "- The matrix records source generation times but not its exact gpovalues or tier snapshot filenames.",
@@ -235,9 +251,13 @@ def _model_summary(model: ValueRegressionResult, training_count: int) -> dict[st
         "target": "log(value)",
         "selected_model": model.model_type,
         "eligible_rows": training_count,
+        "initial_fit_rows": model.fit_sample_count,
+        "selection_rows": model.selection_metrics.sample_count,
         "configured_test_fraction": value_regression_test_size(training_count),
-        "held_out_rows": model.metrics.test_sample_count,
+        "final_test_rows": model.metrics.sample_count,
         "selection_note": model.selection_note,
+        "linear_unstable_before_test": model.linear_unstable_before_test,
+        "linear_stability_note": model.linear_stability_note,
         "linear_inadequate_r2_threshold": LINEAR_INADEQUATE_R2,
         "required_random_forest_r2_gain": RANDOM_FOREST_MIN_R2_GAIN,
         "random_forest_trees": RANDOM_FOREST_N_ESTIMATORS,
@@ -246,24 +266,38 @@ def _model_summary(model: ValueRegressionResult, training_count: int) -> dict[st
     }
 
 
-def _held_out_metrics(model: ValueRegressionResult) -> pd.DataFrame:
-    rows = [
-        _metrics_row("selected model", model.model_type, model.metrics),
-        _metrics_row("linear baseline", "LinearRegression", model.baseline_metrics),
-    ]
-    return pd.DataFrame(rows)
+def _final_test_metrics(model: ValueRegressionResult) -> pd.DataFrame:
+    return _metrics_table(
+        model.metrics, model.baseline_metrics, model.model_type, "final test partition"
+    )
 
 
-def _metrics_row(role: str, model_type: str, metrics: ValueRegressionMetrics) -> dict[str, object]:
+def _metrics_table(
+    selected: ValueRegressionMetrics,
+    baseline: ValueRegressionMetrics,
+    selected_type: str,
+    scope: str,
+) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            _metrics_row(scope, "selected model", selected_type, selected),
+            _metrics_row(scope, "linear baseline", "LinearRegression", baseline),
+        ]
+    )
+
+
+def _metrics_row(
+    scope: str, role: str, model_type: str, metrics: ValueRegressionMetrics
+) -> dict[str, object]:
     return {
-        "evaluation_scope": "held-out test partition",
+        "evaluation_scope": scope,
         "model_role": role,
         "model_type": model_type,
         "r2_log": metrics.r2_log,
         "mae_log": metrics.mae_log,
         "mae_value_units": metrics.mae_value,
         "median_abs_error_value_units": metrics.median_abs_error_value,
-        "test_rows": metrics.test_sample_count,
+        "rows": metrics.sample_count,
     }
 
 

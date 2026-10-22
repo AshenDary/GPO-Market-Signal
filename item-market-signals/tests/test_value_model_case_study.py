@@ -33,11 +33,14 @@ def test_case_study_uses_model_results_and_deterministic_residual_examples() -> 
     examples = report.residual_examples.set_index("example_type")
 
     assert report.model_summary["selected_model"] == model.model_type
-    assert report.model_summary["held_out_rows"] == model.metrics.test_sample_count
-    selected_metrics = report.held_out_metrics.iloc[0]
+    assert report.model_summary["final_test_rows"] == model.metrics.sample_count
+    assert report.model_summary["selection_rows"] == model.selection_metrics.sample_count
+    selected_metrics = report.final_test_metrics.iloc[0]
     assert selected_metrics["r2_log"] == pytest.approx(model.metrics.r2_log)
     assert selected_metrics["mae_value_units"] == pytest.approx(model.metrics.mae_value)
-    assert set(report.held_out_metrics["evaluation_scope"]) == {"held-out test partition"}
+    assert set(report.final_test_metrics["evaluation_scope"]) == {"final test partition"}
+    assert set(report.selection_metrics["evaluation_scope"]) == {"selection partition"}
+    assert report.selection_metrics.iloc[0]["r2_log"] == pytest.approx(model.selection_metrics.r2_log)
     assert examples.loc[
         "largest_positive_log_residual", "in_sample_structural_log_residual"
     ] == pytest.approx(scored["log_residual"].max())
@@ -105,7 +108,8 @@ def test_case_study_command_prints_expected_sections_offline() -> None:
     assert completed.returncode == 0, completed.stderr
     for heading in (
         "## Input Provenance",
-        "## Held-Out Validation Metrics",
+        "## Selection Metrics",
+        "## Final Test Metrics",
         "## In-Sample Structural Residual Diagnostics",
         "## Selected-Model Feature Importance",
         "## SHAP Log-Space Example",
@@ -113,4 +117,4 @@ def test_case_study_command_prints_expected_sections_offline() -> None:
     ):
         assert heading in completed.stdout
     assert "log-space" in completed.stdout
-    assert "test partition is not fully" in completed.stdout
+    assert "not unbiased holdout estimates" in completed.stdout

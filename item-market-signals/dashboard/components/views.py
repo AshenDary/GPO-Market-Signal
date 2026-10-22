@@ -971,12 +971,18 @@ def render_model_insights(
         [
             ("Model", value_model.model_type),
             ("Training rows", f"{value_model.training_sample_count:,}"),
-            ("Held-out R2, log scale", f"{metrics.r2_log:.3f}"),
-            ("Held-out MAE, log scale", f"{metrics.mae_log:.3f}"),
-            ("Held-out MAE, value", _format_value(metrics.mae_value)),
-            ("Median abs error, value", _format_value(metrics.median_abs_error_value)),
+            ("Final test R2, log scale", f"{metrics.r2_log:.3f}"),
+            ("Final test MAE, log scale", f"{metrics.mae_log:.3f}"),
+            ("Final test MAE, value", _format_value(metrics.mae_value)),
+            ("Final test median abs error", _format_value(metrics.median_abs_error_value)),
         ],
         class_name="metric-grid--three",
+    )
+    _notice(
+        "Model choice used a separate selection partition (not an unbiased holdout): "
+        f"linear R2 {value_model.baseline_selection_metrics.r2_log:.3f}; "
+        f"selected-model R2 {value_model.selection_metrics.r2_log:.3f}. "
+        "The final test rows were excluded from the stability guard."
     )
     _notice(value_model.selection_note)
 

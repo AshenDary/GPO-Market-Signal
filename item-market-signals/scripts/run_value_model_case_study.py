@@ -28,7 +28,10 @@ def main() -> None:
         "--min-training-samples",
         type=int,
         default=MIN_TRAINING_SAMPLES,
-        help=f"Minimum eligible rows required to train; project default is {MIN_TRAINING_SAMPLES}.",
+        help=(
+            f"Minimum eligible rows required to train; project default is {MIN_TRAINING_SAMPLES}, "
+            "with a floor of 9 for three-way evaluation."
+        ),
     )
     args = parser.parse_args()
     if args.min_training_samples < 1:
