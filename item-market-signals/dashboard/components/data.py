@@ -13,6 +13,10 @@ from market_signals.analysis.market_change_alerts import (
     MarketChangeAlertResult,
     run_market_change_alerts,
 )
+from market_signals.analysis.snapshot_quality import (
+    SnapshotQualityResult,
+    run_snapshot_quality_preflight,
+)
 from market_signals.features.build_feature_matrix import build_feature_matrix
 from market_signals.models.trend_model import load_snapshot_history, most_traded
 from market_signals.models.value_regression import (
@@ -47,6 +51,12 @@ def load_historical_signal_lab() -> HistoricalSignalResult:
 def load_market_change_alerts() -> MarketChangeAlertResult:
     """Run current-vs-previous market change alerts from raw snapshots."""
     return run_market_change_alerts()
+
+
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
+def load_snapshot_quality_preflight() -> SnapshotQualityResult:
+    """Inspect the saved gpovalues snapshot history without modifying it."""
+    return run_snapshot_quality_preflight()
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)

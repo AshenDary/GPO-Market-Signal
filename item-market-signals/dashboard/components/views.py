@@ -17,6 +17,7 @@ import streamlit as st
 from dashboard.components.layout import render_metric_cards
 from market_signals.analysis.historical_signal_lab import HistoricalSignalResult
 from market_signals.analysis.market_change_alerts import MarketChangeAlertResult
+from market_signals.analysis.snapshot_quality import QUALITY_CATEGORIES, SnapshotQualityResult
 from market_signals.evaluator.evaluate import (
     find_item_matches,
     resolve_item,
@@ -1178,6 +1179,112 @@ def _alert_type_label(alert_type: object) -> str:
         "activity_change": "Activity change",
     }
     return labels.get(str(alert_type), str(alert_type).replace("_", " ").title())
+
+
+def _snapshot_metric_quality_text(row: pd.Series, metric: str) -> str:
+    if row["read_error"]:
+        return "unavailable"
+    labels = {"non_numeric": "non-numeric"}
+    counts = [
+        f"{labels.get(category, category)} {int(row[f'{metric}_{category}_count'])}"
+        for category in QUALITY_CATEGORIES
+        if int(row[f"{metric}_{category}_count"]) > 0
+    ]
+    return ", ".join(counts) if counts else "clean"
+
+
+def _snapshot_identity_quality_text(row: pd.Series) -> str:
+    if row["read_error"]:
+        return "unavailable"
+    return (
+        f"missing {int(row['missing_identity_count'])}, "
+        f"duplicate identities {int(row['duplicate_identity_count'])}"
+    )
+
+
+def render_snapshot_quality_preflight(result: SnapshotQualityResult) -> None:
+    """Render a compact, non-blocking quality summary for saved snapshots."""
+    _section_title("Snapshot quality preflight")
+    summary = result.summary
+    rows = result.snapshots.copy()
+    row_range = (
+        f"{int(summary['minimum_row_count']):,} to {int(summary['maximum_row_count']):,}"
+        if summary["minimum_row_count"] is not None
+        else "n/a"
+    )
+    render_metric_cards(
+        [
+            ("Snapshot dates", f"{int(summary['snapshot_count']):,}"),
+            (
+                "Coverage window",
+                f"{summary['first_snapshot_date']} to {summary['last_snapshot_date']}",
+            ),
+            ("Missing dates", f"{int(summary['missing_calendar_date_count']):,}"),
+            ("Dates with concerns", f"{int(summary['quality_concern_snapshot_count']):,}"),
+            ("Unreadable dates", f"{int(summary['unreadable_snapshot_count']):,}"),
+            ("Coverage changes", f"{int(summary['coverage_change_snapshot_count']):,}"),
+            ("Rows per readable snapshot", row_range),
+        ],
+        class_name="metric-grid--three",
+    )
+    _notice(
+        "This read-only preflight describes saved input quality and coverage. It does not repair "
+        "data, block the analysis below, or treat ordinary published-value movement as an error."
+    )
+    _notice(
+        "Zero published value is a concern because downstream comparisons require a positive value. "
+        "Zero demand ratio and zero trade_count are counted for visibility but remain valid nonnegative values."
+    )
+
+    missing_dates = tuple(summary.get("missing_calendar_dates", ()))
+    if missing_dates:
+        st.warning("Missing calendar dates: " + ", ".join(str(value) for value in missing_dates))
+
+    review_rows = rows[rows["has_quality_concerns"] | rows["has_coverage_change"]].copy()
+    if review_rows.empty:
+        _notice("No snapshot date has a quality concern or a change in item coverage.")
+        return
+
+    review_rows["identity_quality"] = review_rows.apply(_snapshot_identity_quality_text, axis=1)
+    for metric in ("value", "demand_ratio", "trade_count"):
+        review_rows[f"{metric}_quality"] = review_rows.apply(
+            lambda row, selected_metric=metric: _snapshot_metric_quality_text(row, selected_metric),
+            axis=1,
+        )
+
+    display = review_rows[
+        [
+            "snapshot_date",
+            "read_error",
+            "row_count",
+            "unique_identity_count",
+            "added_identity_count",
+            "removed_identity_count",
+            "identity_quality",
+            "value_quality",
+            "demand_ratio_quality",
+            "trade_count_quality",
+        ]
+    ].rename(
+        columns={
+            "snapshot_date": "Snapshot date",
+            "read_error": "Read error",
+            "row_count": "Rows",
+            "unique_identity_count": "Unique identities",
+            "added_identity_count": "Added",
+            "removed_identity_count": "Removed",
+            "identity_quality": "Identity quality",
+            "value_quality": "Value quality",
+            "demand_ratio_quality": "Demand-ratio quality",
+            "trade_count_quality": "Activity quality",
+        }
+    )
+    with st.expander("Review snapshot dates with concerns or coverage changes", expanded=False):
+        st.dataframe(display, hide_index=True, width="stretch")
+        _notice(
+            "Added and removed counts compare each date with the preceding available snapshot. "
+            "They describe source coverage changes and are not automatically data errors."
+        )
 
 
 def _render_alert_rules(result: MarketChangeAlertResult) -> None:

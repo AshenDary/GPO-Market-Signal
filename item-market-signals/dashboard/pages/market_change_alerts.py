@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import streamlit as st
 
-from dashboard.components.data import load_market_change_alerts
+from dashboard.components.data import load_market_change_alerts, load_snapshot_quality_preflight
 from dashboard.components.layout import render_refresh_button
-from dashboard.components.views import render_market_change_alerts
+from dashboard.components.views import render_market_change_alerts, render_snapshot_quality_preflight
 
 
 render_refresh_button("refresh_market_change_alerts")
+
+try:
+    snapshot_quality_result = load_snapshot_quality_preflight()
+except (FileNotFoundError, ValueError) as exc:
+    st.warning(f"Snapshot quality preflight unavailable: {exc}")
+else:
+    render_snapshot_quality_preflight(snapshot_quality_result)
 
 try:
     market_change_result = load_market_change_alerts()
