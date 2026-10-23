@@ -22,7 +22,12 @@ Check the Git root, the `item-market-signals/` project directory, and any
 location per CONTEXT.md's architecture and SKILLS.md's file placement table.
 For each loose file:
 - Read its docstring/imports to identify what it does.
-- Match it against SKILLS.md's file placement rules (ingestion -> `src/market_signals/ingest/`, merging -> `features/`, derived signals -> `models/`, CLI tools -> `evaluator/`, tests -> `tests/`, fixtures -> `tests/fixtures/`, thin runners -> `scripts/`, raw data -> `data/raw/`).
+- Match it against SKILLS.md's file placement rules (ingestion ->
+  `src/market_signals/ingest/`, merging -> `features/`, historical snapshot
+  evaluation -> `analysis/`, predictive/structural models -> `models/`, current
+  lookup CLI -> `evaluator/`, private decision logic and CLI -> `decisions/`,
+  tests -> `tests/`, fixtures -> `tests/fixtures/`, thin runners -> `scripts/`,
+  raw data -> `data/raw/`).
 - Move it to the correct path, renaming only if the existing file at that
   path has a clearly different (non-conflicting) purpose -- if there's a
   real naming collision, stop and ask rather than overwriting.
