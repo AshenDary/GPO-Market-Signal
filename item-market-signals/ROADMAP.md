@@ -1,9 +1,10 @@
 # Roadmap
 
-The original personal trade-log idea was replaced by a stronger source of
-truth: gpovalues.com already publishes community-solved values from observed
-trades. This project now builds a better evaluator, dashboard, and model
-diagnostic layer on top of that public market data.
+gpovalues.com remains the source of truth for community-solved published
+market values from observed trades. The project adds a private, local decision
+log for buy/no-buy workflow evidence and actual resale outcomes, but keeps
+those personal fields separate from published-value changes and model
+diagnostics.
 
 ## Completed
 
@@ -19,6 +20,8 @@ diagnostic layer on top of that public market data.
 | 7. Structural value regression | RandomForest fallback, low-confidence/tier-only estimates, anomaly diagnostics | Done |
 | 8. SHAP explainability | TreeExplainer for the existing RandomForestRegressor, log-space contribution chart, additivity test | Done |
 | 9. Scheduled data refresh | GitHub Actions workflow for daily/manual ingest, feature build, and data-output commits | Done |
+| 10. Private decision log | Local buy/no-buy logging, actual resale updates, and read-only 14-day gpovalues marked outcomes | Done |
+| 11. Historical review tools | Historical Signal Lab and Market Change Alerts for snapshot-based review leads | Done |
 
 ## Current focus
 
@@ -28,6 +31,9 @@ diagnostic layer on top of that public market data.
   behavior verified separately from the data workflow.
 - Prepare the portfolio narrative: what gpovalues provides, what this project
   adds, where the model is useful, and where it should not be trusted.
+- Keep decision-log language clear: read-only marked outcomes are changes in
+  gpovalues' published estimates, while recorded resale fields are actual
+  realized outcomes.
 - Continue tightening dashboard ergonomics and responsive presentation as real
   use reveals friction.
 
@@ -66,8 +72,15 @@ diagnostic layer on top of that public market data.
   for the current evaluator to work.
 - **Discord bot wrapper.** Useful for daily ergonomics eventually, but the CLI
   and Streamlit dashboard cover the current use cases.
-- **Personal price-check logging.** Still optional. It could support a portfolio
-  "did this tool change decisions?" story, but it is not a primary data source.
+- **Decision-log analytics.** The private log now records buy/no-buy decisions,
+  asking prices, purchase prices, and actual resale outcomes. Future work can
+  summarize whether using the tool changed behavior, but those analytics must
+  keep realized resale/profit separate from gpovalues published-estimate
+  movement.
+- **Historical signal expansion.** Historical Signal Lab and Market Change
+  Alerts are implemented as review and evaluation tools. Future additions can
+  broaden signals or baselines only when the output still labels them as
+  published-value changes, not completed trades or realized returns.
 
 ## Definition of done for future additions
 
