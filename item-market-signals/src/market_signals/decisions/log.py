@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from math import isfinite
 from pathlib import Path
 from uuid import uuid4
 
@@ -104,6 +105,25 @@ class MarkedOutcome:
     actual_resale_date: str = ""
     actual_resale_price: float | None = None
     reason: str = ""
+
+
+@dataclass(frozen=True)
+class DecisionLogSummary:
+    """Aggregate counts and actual resale results from a private decision log."""
+
+    total_decisions: int
+    buy_decision_count: int
+    no_buy_decision_count: int
+    saved_verdict_counts: dict[str, int]
+    bought_awaiting_resale_count: int
+    incomplete_resale_record_count: int
+    completed_actual_resale_count: int
+    completed_resales_missing_purchase_price_count: int
+    gross_result_resale_count: int
+    gross_recorded_purchase_total: float
+    gross_recorded_resale_total: float
+    gross_recorded_resale_difference: float
+    gross_recorded_resale_percentage: float | None
 
 
 def latest_gpovalues_snapshot(snapshot_dir: Path = SNAPSHOT_DIR) -> Path:
@@ -277,6 +297,72 @@ def load_decision_log(log_path: Path = DECISION_LOG_PATH) -> pd.DataFrame:
         if column not in df.columns:
             df[column] = ""
     return df[DECISION_COLUMNS]
+
+
+def summarize_decision_log(log: pd.DataFrame) -> DecisionLogSummary:
+    """Summarize private decisions without reading snapshots or modifying the log."""
+    if log.empty:
+        return DecisionLogSummary(
+            total_decisions=0,
+            buy_decision_count=0,
+            no_buy_decision_count=0,
+            saved_verdict_counts={},
+            bought_awaiting_resale_count=0,
+            incomplete_resale_record_count=0,
+            completed_actual_resale_count=0,
+            completed_resales_missing_purchase_price_count=0,
+            gross_result_resale_count=0,
+            gross_recorded_purchase_total=0.0,
+            gross_recorded_resale_total=0.0,
+            gross_recorded_resale_difference=0.0,
+            gross_recorded_resale_percentage=None,
+        )
+
+    bought = _column_or_blank(log, "bought").map(_as_bool)
+    purchase_prices = pd.to_numeric(_column_or_blank(log, "purchase_price"), errors="coerce")
+    raw_resale_prices = _column_or_blank(log, "resale_price")
+    resale_prices = pd.to_numeric(raw_resale_prices, errors="coerce")
+    resale_dates = _column_or_blank(log, "resale_date")
+    valid_purchase = purchase_prices.map(_is_positive_finite)
+    valid_resale_price = resale_prices.map(_is_positive_finite)
+    valid_resale = valid_resale_price & resale_dates.map(_is_iso_resale_date)
+    completed_resales = bought & valid_resale
+    gross_result_rows = completed_resales & valid_purchase
+    has_resale_detail = raw_resale_prices.map(lambda value: not _is_blank(value)) | resale_dates.map(
+        lambda value: not _is_blank(value)
+    )
+
+    purchase_total = float(purchase_prices[gross_result_rows].sum())
+    resale_total = float(resale_prices[gross_result_rows].sum())
+    gross_difference = resale_total - purchase_total
+    gross_percentage = (
+        (gross_difference / purchase_total) * 100 if purchase_total > 0 else None
+    )
+
+    verdicts = _column_or_blank(log, "verdict").map(_string_or_blank).str.strip()
+    verdicts = verdicts.where(verdicts.ne(""), "(blank)")
+    verdict_counts = {
+        str(verdict): int(count)
+        for verdict, count in verdicts.value_counts().sort_index().items()
+    }
+
+    return DecisionLogSummary(
+        total_decisions=len(log),
+        buy_decision_count=int(bought.sum()),
+        no_buy_decision_count=int((~bought).sum()),
+        saved_verdict_counts=verdict_counts,
+        bought_awaiting_resale_count=int((bought & ~valid_resale).sum()),
+        incomplete_resale_record_count=int((bought & has_resale_detail & ~valid_resale).sum()),
+        completed_actual_resale_count=int(completed_resales.sum()),
+        completed_resales_missing_purchase_price_count=int(
+            (completed_resales & ~valid_purchase).sum()
+        ),
+        gross_result_resale_count=int(gross_result_rows.sum()),
+        gross_recorded_purchase_total=purchase_total,
+        gross_recorded_resale_total=resale_total,
+        gross_recorded_resale_difference=gross_difference,
+        gross_recorded_resale_percentage=gross_percentage,
+    )
 
 
 def get_decision(decision_id: str, log_path: Path = DECISION_LOG_PATH) -> pd.Series:
@@ -479,6 +565,26 @@ def _as_bool(value: object) -> bool:
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() in {"true", "1", "yes", "y", "buy", "bought"}
+
+
+def _column_or_blank(frame: pd.DataFrame, column: str) -> pd.Series:
+    if column in frame.columns:
+        return frame[column]
+    return pd.Series("", index=frame.index, dtype=object)
+
+
+def _is_positive_finite(value: object) -> bool:
+    return not _is_blank(value) and isfinite(float(value)) and float(value) > 0
+
+
+def _is_iso_resale_date(value: object) -> bool:
+    if _is_blank(value):
+        return False
+    try:
+        date.fromisoformat(str(value).strip())
+    except ValueError:
+        return False
+    return True
 
 
 def _parse_resale_date(value: date | str | None) -> date:
