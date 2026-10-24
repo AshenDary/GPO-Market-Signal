@@ -18,6 +18,9 @@ from config.settings import SNAPSHOT_DIR
 PRIOR_SIGNAL_DAYS = 7
 OUTCOME_DAYS = 14
 MAX_OUTCOME_DELAY_DAYS = 3
+MIN_COHORT_CHECK_DATES = 2
+MIN_COHORT_CHECK_ITEMS = 2
+MIN_COHORT_READY_OUTCOMES = 2
 
 
 @dataclass(frozen=True)
@@ -35,6 +38,7 @@ class HistoricalSignalResult:
 
     observations: pd.DataFrame
     summary: pd.DataFrame
+    cohort_checks: pd.DataFrame
     metadata: dict[str, object]
 
 
@@ -65,6 +69,7 @@ def run_historical_signal_lab(
         as_of=effective_as_of,
     )
     summary = summarize_signal_groups(observations)
+    cohort_checks = build_cohort_stability_checks(observations)
     metadata = {
         "snapshot_count": len(snapshots),
         "first_snapshot_date": min(snapshot_dates).isoformat(),
@@ -80,7 +85,12 @@ def run_historical_signal_lab(
         "awaiting_window_count": int((observations["outcome_status"] == "awaiting_window").sum()),
         "confirmed_missing_outcome_count": int(_confirmed_missing_mask(observations).sum()),
     }
-    return HistoricalSignalResult(observations=observations, summary=summary, metadata=metadata)
+    return HistoricalSignalResult(
+        observations=observations,
+        summary=summary,
+        cohort_checks=cohort_checks,
+        metadata=metadata,
+    )
 
 
 def load_gpovalues_snapshots(snapshot_dir: Path = SNAPSHOT_DIR) -> list[SnapshotFrame]:
@@ -172,6 +182,144 @@ def summarize_signal_groups(observations: pd.DataFrame) -> pd.DataFrame:
     if not summary_rows:
         return _empty_summary()
     return pd.DataFrame(summary_rows).sort_values(["signal", "group", "cohort"]).reset_index(drop=True)
+
+
+def build_cohort_stability_checks(
+    observations: pd.DataFrame,
+    *,
+    minimum_dates: int = MIN_COHORT_CHECK_DATES,
+    minimum_items: int = MIN_COHORT_CHECK_ITEMS,
+    minimum_ready_outcomes: int = MIN_COHORT_READY_OUTCOMES,
+) -> pd.DataFrame:
+    """Build exploratory date-level and item-balanced checks for each signal group."""
+    if minimum_dates < 1 or minimum_items < 1 or minimum_ready_outcomes < 1:
+        raise ValueError("Cohort-check minimums must be at least 1.")
+    if observations.empty:
+        return _empty_cohort_checks()
+
+    eligible = observations[observations["evaluation_status"] == "eligible"].copy()
+    rows: list[dict[str, object]] = []
+    signal_specs = [
+        ("prior_7d_value_change", "prior_7d_value_change_group"),
+        ("prior_7d_demand_ratio_change", "prior_7d_demand_ratio_change_group"),
+        ("confidence_category", "confidence_category"),
+    ]
+    for signal_name, group_column in signal_specs:
+        if group_column not in eligible.columns:
+            continue
+        group_values = sorted(str(value) for value in eligible[group_column].dropna().unique())
+        for group_value in group_values:
+            group_rows = eligible[eligible[group_column].astype(str) == group_value]
+            if group_rows.empty:
+                continue
+            same_dates = set(group_rows["evaluation_date"])
+            baseline_rows = eligible[eligible["evaluation_date"].isin(same_dates)]
+            rows.append(
+                _cohort_check_row(
+                    signal_name,
+                    group_value,
+                    group_rows,
+                    baseline_rows,
+                    minimum_dates=minimum_dates,
+                    minimum_items=minimum_items,
+                    minimum_ready_outcomes=minimum_ready_outcomes,
+                )
+            )
+
+    if not rows:
+        return _empty_cohort_checks()
+    return pd.DataFrame(rows, columns=_cohort_check_columns()).sort_values(
+        ["signal", "group"]
+    ).reset_index(drop=True)
+
+
+def _cohort_check_row(
+    signal: str,
+    group: str,
+    group_rows: pd.DataFrame,
+    baseline_rows: pd.DataFrame,
+    *,
+    minimum_dates: int,
+    minimum_items: int,
+    minimum_ready_outcomes: int,
+) -> dict[str, object]:
+    ready = group_rows[group_rows["outcome_status"] == "ready"].copy()
+    baseline_ready = baseline_rows[baseline_rows["outcome_status"] == "ready"].copy()
+
+    group_by_date = ready.groupby("evaluation_date")["outcome_change_pct"].median()
+    baseline_by_date = baseline_ready.groupby("evaluation_date")["outcome_change_pct"].median()
+    date_comparisons = pd.concat(
+        [group_by_date.rename("group"), baseline_by_date.rename("baseline")],
+        axis=1,
+        join="inner",
+    ).dropna()
+    date_differences = date_comparisons["group"] - date_comparisons["baseline"]
+
+    per_item = ready.groupby("item_identity")["outcome_change_pct"].median().dropna()
+    ready_count = len(ready)
+    date_status, date_reason = _cohort_check_status(
+        "shared ready dates",
+        len(date_differences),
+        minimum_dates,
+        ready_count,
+        minimum_ready_outcomes,
+    )
+    item_status, item_reason = _cohort_check_status(
+        "items with ready outcomes",
+        len(per_item),
+        minimum_items,
+        ready_count,
+        minimum_ready_outcomes,
+    )
+
+    return {
+        "signal": signal,
+        "group": group,
+        "observations": int(len(group_rows)),
+        "unique_evaluation_dates": int(group_rows["evaluation_date"].nunique()),
+        "unique_items": int(group_rows["item_identity"].nunique()),
+        "ready_outcome_count": ready_count,
+        "ready_outcome_coverage_pct": _rounded_or_none(
+            (ready_count / len(group_rows)) * 100 if len(group_rows) else None
+        ),
+        "pending_outcome_count": int((group_rows["outcome_status"] == "pending").sum()),
+        "awaiting_window_count": int((group_rows["outcome_status"] == "awaiting_window").sum()),
+        "confirmed_missing_outcome_count": int(_confirmed_missing_mask(group_rows).sum()),
+        "date_check_status": date_status,
+        "date_check_reason": date_reason,
+        "date_comparison_count": int(len(date_differences)),
+        "date_positive_difference_count": int((date_differences > 0).sum()),
+        "date_negative_difference_count": int((date_differences < 0).sum()),
+        "date_flat_difference_count": int((date_differences == 0).sum()),
+        "date_median_difference_pct": _rounded_or_none(date_differences.median()),
+        "item_check_status": item_status,
+        "item_check_reason": item_reason,
+        "item_balanced_ready_items": int(len(per_item)),
+        "item_balanced_mean_change_pct": _rounded_or_none(per_item.mean()),
+        "item_balanced_median_change_pct": _rounded_or_none(per_item.median()),
+        "item_balanced_positive_change_pct": _rounded_or_none(
+            (per_item > 0).mean() * 100 if len(per_item) else None
+        ),
+    }
+
+
+def _cohort_check_status(
+    unit_label: str,
+    unit_count: int,
+    minimum_units: int,
+    ready_count: int,
+    minimum_ready_outcomes: int,
+) -> tuple[str, str]:
+    reasons = []
+    if ready_count < minimum_ready_outcomes:
+        reasons.append(
+            f"need at least {minimum_ready_outcomes} ready outcomes; found {ready_count}"
+        )
+    if unit_count < minimum_units:
+        reasons.append(f"need at least {minimum_units} {unit_label}; found {unit_count}")
+    if reasons:
+        return "insufficient_data", "; ".join(reasons)
+    return "ready", ""
 
 
 def _prepare_snapshot(df: pd.DataFrame, snapshot_date: date) -> pd.DataFrame:
@@ -512,3 +660,35 @@ def _empty_summary() -> pd.DataFrame:
         "positive_change_pct",
     ]
     return pd.DataFrame(columns=columns)
+
+
+def _cohort_check_columns() -> list[str]:
+    return [
+        "signal",
+        "group",
+        "observations",
+        "unique_evaluation_dates",
+        "unique_items",
+        "ready_outcome_count",
+        "ready_outcome_coverage_pct",
+        "pending_outcome_count",
+        "awaiting_window_count",
+        "confirmed_missing_outcome_count",
+        "date_check_status",
+        "date_check_reason",
+        "date_comparison_count",
+        "date_positive_difference_count",
+        "date_negative_difference_count",
+        "date_flat_difference_count",
+        "date_median_difference_pct",
+        "item_check_status",
+        "item_check_reason",
+        "item_balanced_ready_items",
+        "item_balanced_mean_change_pct",
+        "item_balanced_median_change_pct",
+        "item_balanced_positive_change_pct",
+    ]
+
+
+def _empty_cohort_checks() -> pd.DataFrame:
+    return pd.DataFrame(columns=_cohort_check_columns())

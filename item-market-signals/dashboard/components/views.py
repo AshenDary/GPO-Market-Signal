@@ -1571,6 +1571,7 @@ def render_historical_signal_lab(result: HistoricalSignalResult) -> None:
     metadata = result.metadata
     observations = result.observations.copy()
     summary = result.summary.copy()
+    cohort_checks = result.cohort_checks.copy()
 
     render_metric_cards(
         [
@@ -1601,7 +1602,7 @@ def render_historical_signal_lab(result: HistoricalSignalResult) -> None:
         _notice("No historical snapshot observations are available.")
         return
 
-    _section_title("Signal group summaries")
+    _section_title("Item-date signal summaries")
     signal_options = ["All", *sorted(summary["signal"].dropna().unique())] if not summary.empty else ["All"]
     selected_signal = st.selectbox("Signal", signal_options, key="historical_signal_summary_signal")
     filtered_summary = summary
@@ -1623,6 +1624,101 @@ def render_historical_signal_lab(result: HistoricalSignalResult) -> None:
             "positive_change_pct": st.column_config.NumberColumn("Positive %", format="%.2f"),
         },
     )
+
+    _section_title("Cohort stability checks")
+    _notice(
+        "These exploratory checks reduce two concentration risks: date-level results compare each "
+        "signal group with its same-date baseline, while item-balanced results give each item one "
+        "median ready outcome. They are not forecasts or independent trade results."
+    )
+    filtered_checks = cohort_checks
+    if selected_signal != "All" and not cohort_checks.empty:
+        filtered_checks = cohort_checks[cohort_checks["signal"] == selected_signal]
+
+    coverage_tab, date_tab, item_tab = st.tabs(
+        ["Coverage", "Date-level comparison", "Item-balanced outcomes"]
+    )
+    with coverage_tab:
+        coverage = filtered_checks[
+            [
+                "signal",
+                "group",
+                "observations",
+                "unique_evaluation_dates",
+                "unique_items",
+                "ready_outcome_count",
+                "ready_outcome_coverage_pct",
+                "pending_outcome_count",
+                "awaiting_window_count",
+                "confirmed_missing_outcome_count",
+            ]
+        ].rename(
+            columns={
+                "signal": "Signal",
+                "group": "Group",
+                "observations": "Item-date rows",
+                "unique_evaluation_dates": "Evaluation dates",
+                "unique_items": "Unique items",
+                "ready_outcome_count": "Ready outcomes",
+                "ready_outcome_coverage_pct": "Ready coverage %",
+                "pending_outcome_count": "Pending",
+                "awaiting_window_count": "Awaiting window",
+                "confirmed_missing_outcome_count": "Confirmed missing",
+            }
+        )
+        st.dataframe(coverage, use_container_width=True, hide_index=True)
+    with date_tab:
+        date_checks = filtered_checks[
+            [
+                "signal",
+                "group",
+                "date_check_status",
+                "date_check_reason",
+                "date_comparison_count",
+                "date_positive_difference_count",
+                "date_negative_difference_count",
+                "date_flat_difference_count",
+                "date_median_difference_pct",
+            ]
+        ].rename(
+            columns={
+                "signal": "Signal",
+                "group": "Group",
+                "date_check_status": "Status",
+                "date_check_reason": "Insufficient-data reason",
+                "date_comparison_count": "Shared ready dates",
+                "date_positive_difference_count": "Positive differences",
+                "date_negative_difference_count": "Negative differences",
+                "date_flat_difference_count": "Flat differences",
+                "date_median_difference_pct": "Median difference (points)",
+            }
+        )
+        st.dataframe(date_checks, use_container_width=True, hide_index=True)
+    with item_tab:
+        item_checks = filtered_checks[
+            [
+                "signal",
+                "group",
+                "item_check_status",
+                "item_check_reason",
+                "item_balanced_ready_items",
+                "item_balanced_mean_change_pct",
+                "item_balanced_median_change_pct",
+                "item_balanced_positive_change_pct",
+            ]
+        ].rename(
+            columns={
+                "signal": "Signal",
+                "group": "Group",
+                "item_check_status": "Status",
+                "item_check_reason": "Insufficient-data reason",
+                "item_balanced_ready_items": "Items with ready outcomes",
+                "item_balanced_mean_change_pct": "Mean item median change %",
+                "item_balanced_median_change_pct": "Median item median change %",
+                "item_balanced_positive_change_pct": "Positive items %",
+            }
+        )
+        st.dataframe(item_checks, use_container_width=True, hide_index=True)
 
     _section_title("Item-date observations")
     col_a, col_b, col_c = st.columns(3)
