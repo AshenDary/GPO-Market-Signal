@@ -28,10 +28,13 @@ from config.settings import OUTPUT_DIR, SNAPSHOT_DIR
 from market_signals.features.build_feature_matrix import build_feature_matrix
 
 MIN_TRAINING_SAMPLES = 30
+MIN_EVALUATION_SAMPLES = 9
 CONFIDENT_TRAINING_LABELS = {"medium", "high"}
 ANOMALY_STD_THRESHOLD = 1.5
 LINEAR_INADEQUATE_R2 = 0.25
 RANDOM_FOREST_MIN_R2_GAIN = 0.10
+RANDOM_FOREST_N_ESTIMATORS = 300
+RANDOM_FOREST_MIN_SAMPLES_LEAF = 3
 RANDOM_STATE = 42
 
 NUMERIC_FEATURES = [
@@ -55,7 +58,7 @@ class ValueRegressionMetrics:
     mae_log: float
     mae_value: float
     median_abs_error_value: float
-    test_sample_count: int
+    sample_count: int
 
 
 @dataclass(frozen=True)
@@ -64,10 +67,15 @@ class ValueRegressionResult:
     model_type: str
     metrics: ValueRegressionMetrics
     baseline_metrics: ValueRegressionMetrics
+    selection_metrics: ValueRegressionMetrics
+    baseline_selection_metrics: ValueRegressionMetrics
     training_sample_count: int
+    fit_sample_count: int
     residual_std_log: float
     feature_names: list[str]
     selection_note: str
+    linear_unstable_before_test: bool
+    linear_stability_note: str
 
 
 @dataclass(frozen=True)
@@ -123,63 +131,67 @@ def train_value_regression(
 ) -> ValueRegressionResult:
     """Train a linear structural value model with a guarded RF fallback.
 
-    The baseline is plain linear regression because the point is interpretably
-    measuring structural fit. Random forest is only selected when the held-out
-    linear R^2 is plainly weak and the forest improves it by a meaningful
-    margin, which keeps complexity from hiding a mediocre structural signal.
+    Candidate selection uses a separate selection partition; the final test
+    partition is evaluated only after the model type has been fixed.
     """
     df = load_latest_feature_matrix() if feature_matrix is None else feature_matrix.copy()
-    training_df = _training_rows(df)
+    df = df.reset_index(drop=True)
+    training_df = select_training_rows(df)
     training_count = len(training_df)
-    if training_count < min_training_samples:
+    required_count = max(min_training_samples, MIN_EVALUATION_SAMPLES)
+    if training_count < required_count:
         raise InsufficientTrainingDataError(
-            f"Need at least {min_training_samples} medium/high-confidence items to train "
+            f"Need at least {required_count} medium/high-confidence items to train "
             f"the structural value model; found {training_count}."
         )
 
     x = prepare_feature_frame(training_df)
     y = np.log(pd.to_numeric(training_df["value"], errors="coerce").astype(float))
-    test_size = 0.25 if training_count >= 40 else max(0.2, min(0.35, 8 / training_count))
-    x_train, x_test, y_train, y_test = train_test_split(
-        x,
-        y,
-        test_size=test_size,
-        random_state=random_state,
-    )
+    fit_idx, selection_idx, test_idx = split_value_regression_rows(training_count, random_state)
+    x_fit, y_fit = x.iloc[fit_idx], y.iloc[fit_idx]
+    x_selection, y_selection = x.iloc[selection_idx], y.iloc[selection_idx]
+    x_test, y_test = x.iloc[test_idx], y.iloc[test_idx]
 
     linear_pipeline = _build_pipeline(LinearRegression())
-    linear_pipeline.fit(x_train, y_train)
-    linear_metrics = _evaluate_pipeline(linear_pipeline, x_test, y_test)
+    linear_pipeline.fit(x_fit, y_fit)
+    linear_selection_metrics = _evaluate_pipeline(linear_pipeline, x_selection, y_selection)
 
     selected_pipeline = linear_pipeline
-    selected_metrics = linear_metrics
+    selected_selection_metrics = linear_selection_metrics
     selected_type = "LinearRegression"
-    selection_note = "Linear baseline selected for interpretability; held-out fit was adequate."
+    selection_note = "Linear baseline selected for interpretability; selection-split fit was adequate."
 
     # Keep linear regression as the baseline, but do not ship it when sparse
     # structural labels make its extrapolations numerically unstable.
-    linear_unstable, instability_note = _has_unstable_predictions(linear_pipeline, df)
-    if linear_metrics.r2_log < LINEAR_INADEQUATE_R2 or linear_unstable:
+    development_df = df.drop(index=training_df.iloc[test_idx].index)
+    linear_unstable, instability_note = _has_unstable_predictions(linear_pipeline, development_df)
+    if linear_selection_metrics.r2_log < LINEAR_INADEQUATE_R2 or linear_unstable:
         forest_pipeline = _build_pipeline(
             RandomForestRegressor(
-                n_estimators=300,
-                min_samples_leaf=3,
+                n_estimators=RANDOM_FOREST_N_ESTIMATORS,
+                min_samples_leaf=RANDOM_FOREST_MIN_SAMPLES_LEAF,
                 random_state=random_state,
             ),
             scale_numeric=False,
         )
-        forest_pipeline.fit(x_train, y_train)
-        forest_metrics = _evaluate_pipeline(forest_pipeline, x_test, y_test)
-        if linear_unstable or forest_metrics.r2_log >= linear_metrics.r2_log + RANDOM_FOREST_MIN_R2_GAIN:
+        forest_pipeline.fit(x_fit, y_fit)
+        forest_selection_metrics = _evaluate_pipeline(forest_pipeline, x_selection, y_selection)
+        forest_improves_fit = (
+            forest_selection_metrics.r2_log
+            >= linear_selection_metrics.r2_log + RANDOM_FOREST_MIN_R2_GAIN
+        )
+        if linear_unstable or forest_improves_fit:
             selected_pipeline = forest_pipeline
-            selected_metrics = forest_metrics
+            selected_selection_metrics = forest_selection_metrics
             selected_type = "RandomForestRegressor"
             selection_note = (
                 f"Random forest selected because the linear baseline was inadequate: {instability_note}"
                 if linear_unstable
-                else "Random forest selected because linear held-out R2 was plainly weak and RF improved it."
+                else "Random forest selected because linear selection R2 was weak and RF improved it."
             )
 
+    selected_metrics = _evaluate_pipeline(selected_pipeline, x_test, y_test)
+    linear_metrics = _evaluate_pipeline(linear_pipeline, x_test, y_test)
     selected_pipeline.fit(x, y)
     all_predictions = selected_pipeline.predict(x)
     residual_std = float(np.std(y - all_predictions, ddof=1)) if len(y) > 1 else 0.0
@@ -190,10 +202,15 @@ def train_value_regression(
         model_type=selected_type,
         metrics=selected_metrics,
         baseline_metrics=linear_metrics,
+        selection_metrics=selected_selection_metrics,
+        baseline_selection_metrics=linear_selection_metrics,
         training_sample_count=training_count,
+        fit_sample_count=len(fit_idx),
         residual_std_log=residual_std,
         feature_names=feature_names,
         selection_note=selection_note,
+        linear_unstable_before_test=linear_unstable,
+        linear_stability_note=instability_note,
     )
 
 
@@ -388,10 +405,35 @@ def encode_feature_frame(model: ValueRegressionResult, df: pd.DataFrame) -> pd.D
     return pd.DataFrame(encoded, columns=model.feature_names, index=df.index)
 
 
-def _training_rows(df: pd.DataFrame) -> pd.DataFrame:
+def select_training_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Return positive-value rows with gpovalues medium/high confidence."""
     confidence = df["confidence"].fillna("").astype(str).str.lower()
     values = pd.to_numeric(df.get("value"), errors="coerce")
     return df[confidence.isin(CONFIDENT_TRAINING_LABELS) & values.notna() & (values > 0)].copy()
+
+
+def value_regression_test_size(training_count: int) -> float:
+    """Return the final-test fraction of eligible rows."""
+    if training_count < 1:
+        raise ValueError("training_count must be greater than zero.")
+    return 0.2
+
+
+def split_value_regression_rows(
+    training_count: int, random_state: int = RANDOM_STATE
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Split eligible row positions into fit, selection, and final-test groups."""
+    if training_count < MIN_EVALUATION_SAMPLES:
+        raise InsufficientTrainingDataError(
+            f"Need at least {MIN_EVALUATION_SAMPLES} eligible rows for fit/selection/test splits."
+        )
+    development, test = train_test_split(
+        np.arange(training_count),
+        test_size=value_regression_test_size(training_count),
+        random_state=random_state,
+    )
+    fit, selection = train_test_split(development, test_size=0.25, random_state=random_state)
+    return fit, selection, test
 
 
 def _build_pipeline(estimator: object, *, scale_numeric: bool = True) -> Pipeline:
@@ -428,7 +470,7 @@ def _evaluate_pipeline(pipeline: Pipeline, x_test: pd.DataFrame, y_test: pd.Seri
         mae_log=float(mean_absolute_error(y_test, predictions)),
         mae_value=float(mean_absolute_error(actual_values, predicted_values)),
         median_abs_error_value=float(np.median(value_errors)),
-        test_sample_count=len(y_test),
+        sample_count=len(y_test),
     )
 
 

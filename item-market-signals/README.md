@@ -34,6 +34,7 @@ estimates are labeled as model-derived, and uncertainty is shown plainly.
   low-confidence and tier-only context
 - SHAP TreeExplainer support for the selected RandomForestRegressor, shown as
   log-space relative feature contributions rather than fake currency deltas
+- [reproducible value-model validation case study](MODEL_VALIDATION_CASE_STUDY.md)
 - Offline tests using fixtures instead of live network calls
 - read-only snapshot quality preflight before alert and historical analysis
 
