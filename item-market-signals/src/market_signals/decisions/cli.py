@@ -12,6 +12,7 @@ import typer
 from config.settings import DECISION_LOG_PATH, SNAPSHOT_DIR
 from market_signals.decisions.log import (
     AmbiguousItemMatchError,
+    DecisionLogSummary,
     DecisionLogError,
     MarkedOutcome,
     append_decision,
@@ -21,6 +22,7 @@ from market_signals.decisions.log import (
     marked_outcome_for_decision,
     record_resale_outcome,
     recompute_saved_verdict,
+    summarize_decision_log,
 )
 
 app = typer.Typer(help="Record and inspect private GPO trading decisions.")
@@ -102,6 +104,16 @@ def show_command(
         raise typer.Exit(code=1) from exc
 
     typer.echo(_format_decision(row, reproduced))
+
+
+@app.command("summary")
+def summary_command(
+    log_path: Path = typer.Option(DECISION_LOG_PATH, "--log-path", help="Private CSV log path."),
+) -> None:
+    """Show aggregate private decisions and actual recorded resale results."""
+    log = load_decision_log(log_path)
+    summary = summarize_decision_log(log)
+    typer.echo(_format_summary(summary, log_path))
 
 
 @app.command("marked-outcome")
@@ -211,6 +223,41 @@ def _format_marked_outcome(outcome: MarkedOutcome) -> str:
         lines.append(f"  Actual resale                : {_format_value(outcome.actual_resale_price)} on {resale_date}")
     else:
         lines.append("  Actual resale                : blank")
+    return "\n".join(lines)
+
+
+def _format_summary(summary: DecisionLogSummary, log_path: Path) -> str:
+    percentage = (
+        "not available (no completed resale has a valid positive purchase price)"
+        if summary.gross_recorded_resale_percentage is None
+        else f"{summary.gross_recorded_resale_percentage:+.1f}%"
+    )
+    verdict_lines = [
+        f"    {verdict}: {count}"
+        for verdict, count in summary.saved_verdict_counts.items()
+    ] or ["    none"]
+    lines = [
+        "Private decision-log summary",
+        f"  Log path                                      : {log_path}",
+        f"  Total decisions                               : {summary.total_decisions}",
+        f"  Buy decisions                                 : {summary.buy_decision_count}",
+        f"  No-buy decisions                              : {summary.no_buy_decision_count}",
+        f"  Bought positions awaiting resale              : {summary.bought_awaiting_resale_count}",
+        f"  Incomplete resale records                     : {summary.incomplete_resale_record_count}",
+        f"  Completed actual resales                      : {summary.completed_actual_resale_count}",
+        "  Completed resales excluded from gross result  : "
+        f"{summary.completed_resales_missing_purchase_price_count} "
+        "(missing or non-positive purchase price)",
+        f"  Resales included in gross result              : {summary.gross_result_resale_count}",
+        f"  Recorded purchase total                       : {summary.gross_recorded_purchase_total:,.0f}",
+        f"  Recorded resale total                         : {summary.gross_recorded_resale_total:,.0f}",
+        f"  Gross recorded resale difference              : {summary.gross_recorded_resale_difference:+,.0f}",
+        f"  Gross recorded resale percentage              : {percentage}",
+        "  Saved verdict counts:",
+        *verdict_lines,
+        "  Interpretation: actual recorded resale results only; gpovalues marked outcomes and",
+        "  published-estimate movement are excluded. Gross difference does not include fees.",
+    ]
     return "\n".join(lines)
 
 

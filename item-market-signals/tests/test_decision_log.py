@@ -25,6 +25,7 @@ from market_signals.decisions.log import (
     marked_outcome_for_decision,
     record_resale_outcome,
     recompute_saved_verdict,
+    summarize_decision_log,
 )
 
 
@@ -61,6 +62,19 @@ def _row(name: str, **overrides: object) -> dict[str, object]:
         "join_key": name.lower().strip(),
     }
     return {**base, **overrides}
+
+
+def _decision_summary_row(**overrides: object) -> dict[str, object]:
+    row = {column: "" for column in DECISION_COLUMNS}
+    row.update(
+        {
+            "decision_id": "summary-id",
+            "decision_timestamp": FIXED_TIME.isoformat(),
+            "verdict": "FAIR",
+            "bought": True,
+        }
+    )
+    return {**row, **overrides}
 
 
 def test_logs_buy_entry_with_snapshot_provenance(tmp_path: Path) -> None:
@@ -551,3 +565,139 @@ def test_marked_outcome_reports_zero_or_missing_original_values(tmp_path: Path, 
 
     assert outcome.status == "no original value"
     assert outcome.percentage_change is None
+
+
+def test_summarizes_decisions_and_only_valid_actual_resales() -> None:
+    log = pd.DataFrame(
+        [
+            _decision_summary_row(
+                decision_id="no-buy",
+                bought=False,
+                verdict="OVERPRICED",
+                purchase_price=10,
+                resale_price=999,
+                marked_value=50_000,
+            ),
+            _decision_summary_row(
+                decision_id="open-buy",
+                purchase_price=100,
+                marked_value=1_000_000,
+            ),
+            _decision_summary_row(
+                decision_id="valid-resale",
+                purchase_price=80,
+                resale_price=120,
+                resale_date="2026-10-01",
+                marked_value=-500_000,
+            ),
+            _decision_summary_row(
+                decision_id="missing-purchase",
+                purchase_price="",
+                resale_price=50,
+                resale_date="2026-10-02",
+                verdict="GOOD DEAL",
+            ),
+            _decision_summary_row(
+                decision_id="incomplete-resale",
+                purchase_price=70,
+                resale_price=0,
+                resale_date="2026-10-03",
+                verdict="GOOD DEAL",
+            ),
+        ],
+        columns=DECISION_COLUMNS,
+    )
+    before = log.copy(deep=True)
+
+    summary = summarize_decision_log(log)
+
+    pd.testing.assert_frame_equal(log, before)
+    assert summary.total_decisions == 5
+    assert summary.buy_decision_count == 4
+    assert summary.no_buy_decision_count == 1
+    assert summary.saved_verdict_counts == {"FAIR": 2, "GOOD DEAL": 2, "OVERPRICED": 1}
+    assert summary.bought_awaiting_resale_count == 2
+    assert summary.completed_actual_resale_count == 2
+    assert summary.completed_resales_missing_purchase_price_count == 1
+    assert summary.gross_result_resale_count == 1
+    assert summary.gross_recorded_purchase_total == pytest.approx(80)
+    assert summary.gross_recorded_resale_total == pytest.approx(120)
+    assert summary.gross_recorded_resale_difference == pytest.approx(40)
+    assert summary.gross_recorded_resale_percentage == pytest.approx(50)
+
+
+def test_empty_decision_summary_has_clear_zero_results() -> None:
+    summary = summarize_decision_log(pd.DataFrame(columns=DECISION_COLUMNS))
+
+    assert summary.total_decisions == 0
+    assert summary.saved_verdict_counts == {}
+    assert summary.completed_actual_resale_count == 0
+    assert summary.gross_recorded_resale_difference == 0
+    assert summary.gross_recorded_resale_percentage is None
+
+
+def test_summary_keeps_price_only_and_invalid_resales_incomplete() -> None:
+    log = pd.DataFrame(
+        [
+            _decision_summary_row(decision_id="valid", purchase_price=80, resale_price=120, resale_date="2026-10-01"),
+            _decision_summary_row(decision_id="price-only", purchase_price=80, resale_price=900),
+            _decision_summary_row(decision_id="bad-date", purchase_price=80, resale_price=900, resale_date="not-a-date"),
+            _decision_summary_row(decision_id="bad-price", purchase_price=80, resale_price="not-a-price"),
+            _decision_summary_row(decision_id="infinite-purchase", purchase_price=float("inf"), resale_price=100, resale_date="2026-10-01"),
+        ],
+        columns=DECISION_COLUMNS,
+    )
+
+    summary = summarize_decision_log(log)
+
+    assert summary.completed_actual_resale_count == 2
+    assert summary.incomplete_resale_record_count == 3
+    assert summary.bought_awaiting_resale_count == 3
+    assert summary.completed_resales_missing_purchase_price_count == 1
+    assert summary.gross_result_resale_count == 1
+    assert summary.gross_recorded_resale_difference == pytest.approx(40)
+    assert summary.gross_recorded_resale_percentage == pytest.approx(50)
+
+
+def test_cli_summary_uses_selected_log_without_modifying_or_printing_entries(tmp_path: Path) -> None:
+    log_path = tmp_path / "private-decisions.csv"
+    private_item = "PRIVATE ITEM NAME"
+    pd.DataFrame(
+        [
+            _decision_summary_row(
+                decision_id="private-id",
+                item_name=private_item,
+                purchase_price=200,
+                resale_price=250,
+                resale_date="2026-10-01",
+                marked_value=999_999,
+                marked_value_source="gpovalues_private_marker",
+            )
+        ],
+        columns=DECISION_COLUMNS,
+    ).to_csv(log_path, index=False)
+    before = log_path.read_bytes()
+
+    result = RUNNER.invoke(app, ["summary", "--log-path", str(log_path)])
+
+    assert result.exit_code == 0
+    assert log_path.read_bytes() == before
+    assert "Completed actual resales" in result.output
+    assert "Gross recorded resale difference" in result.output
+    assert "+50" in result.output
+    assert "gpovalues marked outcomes" in result.output
+    assert private_item not in result.output
+    assert "private-id" not in result.output
+    assert "999,999" not in result.output
+
+
+def test_cli_summary_handles_missing_log(tmp_path: Path) -> None:
+    log_path = tmp_path / "not-created.csv"
+
+    result = RUNNER.invoke(app, ["summary", "--log-path", str(log_path)])
+
+    assert result.exit_code == 0
+    assert "Total decisions                               : 0" in result.output
+    assert "Saved verdict counts:\n    none" in result.output
+    assert "not available" in result.output
+    assert not log_path.exists()
