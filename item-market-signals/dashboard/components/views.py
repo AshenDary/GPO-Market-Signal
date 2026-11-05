@@ -7,6 +7,7 @@ resolution, and price verdicts stay in the existing package modules.
 from __future__ import annotations
 
 from html import escape
+from typing import Sequence
 from uuid import uuid4
 
 import matplotlib.pyplot as plt
@@ -71,6 +72,35 @@ def _item_names(df: pd.DataFrame) -> list[str]:
     return sorted(str(name) for name in df["name"].dropna().unique())
 
 
+def _item_picker_filter_key(key: str) -> str:
+    return f"{key}_catalog_filter"
+
+
+def _item_picker_applied_filter_key(key: str) -> str:
+    return f"{key}_catalog_filter_applied"
+
+
+def _item_picker_options(names: Sequence[str], starts_with: str) -> list[str]:
+    """Keep a large catalog navigable without relying on browser-level menu state."""
+    prefix = starts_with.strip().casefold()
+    if not prefix:
+        return list(names)
+    return [name for name in names if name.casefold().startswith(prefix)]
+
+
+def _item_picker_context_for(selected: object, names: Sequence[str]) -> str | None:
+    """Return the smallest stable catalog context for an exact known selection."""
+    if not isinstance(selected, str) or selected not in names or not selected:
+        return None
+    return selected[0]
+
+
+def _remember_item_picker_context(names: Sequence[str], key: str, filter_key: str) -> None:
+    context = _item_picker_context_for(st.session_state.get(key), names)
+    if context is not None:
+        st.session_state[filter_key] = context
+
+
 def render_item_picker(
     df: pd.DataFrame,
     key: str,
@@ -80,16 +110,39 @@ def render_item_picker(
     default_to_first: bool = True,
     placeholder: str = "Search or choose an item",
 ) -> str | None:
-    """Render the shared searchable item picker used by lookup-style views."""
+    """Render a picker that keeps its alphabetic catalog context after selection."""
     names = _item_names(df)
-    index = 0 if default_to_first and names else None
+    filter_key = _item_picker_filter_key(key)
+    applied_filter_key = _item_picker_applied_filter_key(key)
+    starts_with = st.text_input(
+        "Browse from",
+        key=filter_key,
+        placeholder="Optional starting letters, such as C",
+    )
+    visible_names = _item_picker_options(names, starts_with)
+    previous_filter = st.session_state.get(applied_filter_key)
+    selected = st.session_state.get(key)
+    if previous_filter != starts_with and selected not in visible_names:
+        st.session_state.pop(key, None)
+    st.session_state[applied_filter_key] = starts_with
+
+    if not visible_names:
+        _notice("No catalog items begin with those letters. Clear Browse from to see the full catalog.")
+        return None
+
+    selected = st.session_state.get(key)
+    index = visible_names.index(selected) if selected in visible_names else (
+        0 if default_to_first else None
+    )
     return st.selectbox(
         label,
-        names,
+        visible_names,
         index=index,
         key=key,
         placeholder=placeholder,
         accept_new_options=allow_new_options,
+        on_change=_remember_item_picker_context,
+        args=(names, key, filter_key),
     )
 
 
@@ -494,6 +547,7 @@ def render_lookup(
         with quick_cols[idx]:
             if st.button(str(item_name), key=f"quick_pick_{idx}"):
                 st.session_state["lookup_item"] = item_name
+                st.session_state[_item_picker_filter_key("lookup_item")] = item_name[0]
     st.markdown("</div>", unsafe_allow_html=True)
 
     selected = render_item_picker(df, "lookup_item", allow_new_options=value_model is not None)
@@ -1168,8 +1222,9 @@ def render_trend(df: pd.DataFrame, history: pd.DataFrame | None) -> None:
         )
         return
 
-    names = sorted(df["name"].dropna().unique())
-    selected = st.selectbox("Item", names, key="trend_item")
+    selected = render_item_picker(df, "trend_item")
+    if selected is None:
+        return
     row = resolve_item(df, selected)
     if row is None:
         _notice(f"No match found for '{selected}'.")
