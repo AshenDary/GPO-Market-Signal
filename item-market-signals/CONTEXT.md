@@ -139,7 +139,7 @@ treating this document as the source of truth for a fixed latest date.
 `.github/workflows/daily_ingest.yml` defines the scheduled data-refresh job at
 the Git root. It runs at `0 1 * * *` (1:00 AM UTC / 9:00 AM Asia/Manila) and
 can also be started manually with `workflow_dispatch`. The job runs from the
-`item-market-signals/` working directory on Python 3.9, installs dependencies
+`item-market-signals/` working directory on Python 3.11, installs dependencies
 and the editable package, then runs:
 
 1. `python scripts/run_ingest_gpovalues.py`
