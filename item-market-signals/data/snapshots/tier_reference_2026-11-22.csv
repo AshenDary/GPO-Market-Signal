@@ -1,0 +1,161 @@
+item_name,alias,category,tier,tier_ordinal,sub_tier,sub_tier_ordinal,obtainability,is_unobtainable,is_unstable,demand_status,demand_ordinal,rarity_score,popularity_score,has_detailed_record,fallback_value_score
+Cool Shades,,,EXCLUSIVE,9,,,,,,,,,,False,27.9
+Marine Cape,,,EXCLUSIVE,9,,,,,,,,,,False,27.9
+Marine Cap,,,EXCLUSIVE,9,,,,,,,,,,False,27.9
+Sakamoto Glasses,,,EXCLUSIVE,9,,,,,,,,,,False,27.9
+Prestige Candy Cane,PCC,Weapon,SS,8,High Tier,3.0,ANNIVERSARY,True,False,High Demand,3.0,10.0,9.0,True,41.0
+Prestige Fruitbag,PBAG,Utility,SS,8,High Tier,3.0,ANNIVERSARY,True,False,Stable Demand,2.0,10.0,8.0,True,38.0
+Chromatic All Seeing Eye,CASE,Utility Item,SS,8,High Tier,3.0,ANNIVERSARY,True,False,Stable Demand,2.0,10.0,7.0,True,37.0
+Prestige Firework Daggers,PFD,,SS,8,High Tier,3.0,,,,,,,,False,24.8
+Candy Cane,CC,Weapon,SS,8,High Tier,3.0,UNOB,True,True,High Demand,3.0,9.0,8.0,True,39.0
+Cupid's All Seeing Eye,QASE,,SS,8,High Tier,3.0,,,,,,,,False,24.8
+All Seeing Eye,ASE,Utility Item,SS,8,High Tier,3.0,STORE,False,False,High Demand,3.0,4.0,8.0,True,34.0
+Prestige World Ender,PWE,Weapon,SS,8,Mid Tier,2.0,UNOB,True,True,High Demand,3.0,10.0,7.0,True,39.0
+Prestige Firework Lancer,PFL,Weapon,SS,8,Mid Tier,2.0,ANNIVERSARY,True,False,High Demand,3.0,10.0,8.0,True,40.0
+Prestige Inferno Rocket Blade,PIRB,Weapon,SS,8,Mid Tier,2.0,ANNIVERSARY,True,True,Stable Demand,2.0,10.0,7.0,True,37.0
+Dominus Ultimus,,,SS,8,Mid Tier,2.0,,,,,,,,False,24.8
+All Seeing Shamrock,,,SS,8,Mid Tier,2.0,,,,,,,,False,24.8
+Prestige Firework Rocket Launcher,PFRL,,SS,8,Mid Tier,2.0,,,,,,,,False,24.8
+Jester's Outfit,JFIT,,SS,8,Mid Tier,2.0,,,,,,,,False,24.8
+Titan,,,SS,8,Low Tier,1.0,,,,,,,,False,24.8
+Titan Shifter's Aura,,,SS,8,Low Tier,1.0,,,,,,,,False,24.8
+Blessed Exalted Cupid Queen's Wings,BWINGS,,SS,8,Low Tier,1.0,,,,,,,,False,24.8
+All Seeing Egg,BLO ASE,,SS,8,Low Tier,1.0,,,,,,,,False,24.8
+All Seeing Ba'al,BASE,,SS,8,Low Tier,1.0,,,,,,,,False,24.8
+Leo's Inferno Hagoromo,,,SS,8,Low Tier,1.0,,,,,,,,False,24.8
+All Seeing Holly,HASE,,SS,8,Low Tier,1.0,,,,,,,,False,24.8
+Yukio The Bunny,,,SS,8,Low Tier,1.0,,,,,,,,False,24.8
+Soul King's Scarf,SKS,Vanity,A+,7,High Tier,3.0,DROP,False,False,Stable Demand,2.0,8.0,8.0,True,34.0
+Cupid Queen's Maid Outfit,,,A+,7,High Tier,3.0,,,,,,,,False,21.7
+Iceborn Candy Cane,ICC,,A+,7,High Tier,3.0,,,,,,,,False,21.7
+Anomalized Mega-Pow,AMP,,A+,7,High Tier,3.0,,,,,,,,False,21.7
+2M Bounty,Bounty,Currency / Service,A+,7,High Tier,3.0,GAMEPLAY,False,True,Low Demand,1.0,7.0,1.0,True,24.0
+Bunyo The Bunny,,,A+,7,Mid Tier,2.0,,,,,,,,False,21.7
+Troll Face,,,A+,7,Mid Tier,2.0,,,,,,,,False,21.7
+Flower Bouquet,Bouquet,Support Weapon,A+,7,Mid Tier,2.0,UNOB,True,False,Stable Demand,2.0,9.0,7.0,True,34.0
+World Ender,WE,,A+,7,Mid Tier,2.0,,,,,,,,False,21.7
+Snowcap Scepter,,,A+,7,Mid Tier,2.0,,,,,,,,False,21.7
+Blessed Cupid Queen's Scarf,BSCARF,,A+,7,Mid Tier,2.0,,,,,,,,False,21.7
+Soul Cleaver,NAPOLEON,,A+,7,Low Tier,1.0,,,,,,,,False,21.7
+Dragon Fruit,,,A+,7,Low Tier,1.0,,,,,,,,False,21.7
+Inverted Spear Of Heaven,ISOH,,A+,7,Low Tier,1.0,,,,,,,,False,21.7
+Devil Fruit Rod,DF ROD,Utility Tool,A,6,High Tier,3.0,CRAFTING,False,False,High Demand,3.0,7.0,9.0,True,34.0
+Time-Rift Capsule,,,A,6,High Tier,3.0,,,,,,,,False,18.6
+Blessed Cupid's Bow,BBOW,,A,6,High Tier,3.0,,,,,,,,False,18.6
+Sickle of Sorrow,,,A,6,High Tier,3.0,,,,,,,,False,18.6
+Epic Banana,,,A,6,High Tier,3.0,,,,,,,,False,18.6
+Blessed Exalted Cupid Queen Outfit,BQFIT,,A,6,High Tier,3.0,,,,,,,,False,18.6
+Hollow's World Ender,HWE,,A,6,High Tier,3.0,,,,,,,,False,18.6
+Coyote Outfit,,,A,6,High Tier,3.0,,,,,,,,False,18.6
+Kikoku,Kikoku,Mythical Weapon,A,6,High Tier,3.0,DROP,False,False,Stable Demand,2.0,7.0,7.0,True,30.0
+Dark Blade,DB / Yoru,Mythical Weapon,A,6,High Tier,3.0,DROP,False,False,Stable Demand,2.0,7.0,8.0,True,31.0
+Resurrected Ba'al's Head,RES HEAD,,A,6,High Tier,3.0,,,,,,,,False,18.6
+Inferno Rocket Blade,IRB,,A,6,Mid Tier,2.0,,,,,,,,False,18.6
+Firework Lancer,FL,,A,6,Mid Tier,2.0,,,,,,,,False,18.6
+Head of Ba'al,,,A,6,Mid Tier,2.0,,,,,,,,False,18.6
+Mochi Fruit,,,A,6,Mid Tier,2.0,,,,,,,,False,18.6
+Soul King's Guitar,SKG,,A,6,Mid Tier,2.0,,,,,,,,False,18.6
+Soul Fruit,,,A,6,Mid Tier,2.0,,,,,,,,False,18.6
+Venom Fruit,,,A,6,Mid Tier,2.0,,,,,,,,False,18.6
+Supreme Giftbox Crown,,,A,6,Mid Tier,2.0,,,,,,,,False,18.6
+Nightfall Half Shroud,NFHS,,A,6,Mid Tier,2.0,,,,,,,,False,18.6
+Cupid Queen's Wings,QWINGS,,A,6,Low Tier,1.0,,,,,,,,False,18.6
+Nightfall Shroud,NFS,,A,6,Low Tier,1.0,,,,,,,,False,18.6
+Stark Guns,SGUNS,,A,6,Low Tier,1.0,,,,,,,,False,18.6
+Hover Pod,HPOD,,A,6,Low Tier,1.0,,,,,,,,False,18.6
+Dark Skeletal Shark Mask,,,A,6,Low Tier,1.0,,,,,,,,False,18.6
+Santa's Hat,,,A,6,Low Tier,1.0,,,,,,,,False,18.6
+Flamingo Boat,,,A,6,Low Tier,1.0,,,,,,,,False,18.6
+Exalted Cupid Queen Outfit,,,A-,5,High Tier,3.0,,,,,,,,False,15.5
+True Ba'al's Guard,TBG,,A-,5,High Tier,3.0,,,,,,,,False,15.5
+Virtuous Cupid Quinn's Wings,,,A-,5,High Tier,3.0,,,,,,,,False,15.5
+V Festival Shield,,,A-,5,High Tier,3.0,,,,,,,,False,15.5
+Ope Fruit,,,A-,5,High Tier,3.0,,,,,,,,False,15.5
+Endbringer Wings,,,A-,5,High Tier,3.0,,,,,,,,False,15.5
+Roger's Ace,Ace,Mythical Weapon,A-,5,Mid Tier,2.0,DROP,False,False,Stable Demand,2.0,7.0,6.0,True,27.0
+Endbringer Armor,,,A-,5,Mid Tier,2.0,,,,,,,,False,15.5
+Buddha Fruit,,,A-,5,Mid Tier,2.0,,,,,,,,False,15.5
+Bat Swarm,,,A-,5,Mid Tier,2.0,,,,,,,,False,15.5
+5X Firework Daggers,,,A-,5,Mid Tier,2.0,,,,,,,,False,15.5
+Mochi Trident,,,A-,5,Mid Tier,2.0,,,,,,,,False,15.5
+Mochi Emperor's Scarf,,,A-,5,Mid Tier,2.0,,,,,,,,False,15.5
+Jester's Hat,JHAT,,A-,5,Mid Tier,2.0,,,,,,,,False,15.5
+Cupid's Chakram,,,A-,5,Low Tier,1.0,,,,,,,,False,15.5
+Radiant Shades,,,A-,5,Low Tier,1.0,,,,,,,,False,15.5
+Big Mama's Cape,,,A-,5,Low Tier,1.0,,,,,,,,False,15.5
+Big Mama's Outfit,Male,,A-,5,Low Tier,1.0,,,,,,,,False,15.5
+Magu Fruit,,,A-,5,Low Tier,1.0,,,,,,,,False,15.5
+Kraken Armor Set,Azure,,B+,4,High Tier,3.0,,,,,,,,False,12.4
+Kraken Blade,Azure,,B+,4,High Tier,3.0,,,,,,,,False,12.4
+Cupid Queen's Scarf,,,B+,4,High Tier,3.0,,,,,,,,False,12.4
+Hollow's Fang,HFANG,,B+,4,High Tier,3.0,,,,,,,,False,12.4
+Blo's Sledgehammer,,,B+,4,High Tier,3.0,,,,,,,,False,12.4
+Demon Jester's Scythe,JSCYTHE,,B+,4,High Tier,3.0,,,,,,,,False,12.4
+Sea Serpent's Core & Kraken Core,,,B+,4,Mid Tier,2.0,,,,,,,,False,12.4
+Helix Skewer,,,B+,4,Mid Tier,2.0,,,,,,,,False,12.4
+Soul Cane,,,B+,4,Mid Tier,2.0,,,,,,,,False,12.4
+Ryuma's Scarf,,,B+,4,Mid Tier,2.0,,,,,,,,False,12.4
+Cupid Queen's Outfit,QFIT,,B+,4,Low Tier,1.0,,,,,,,,False,12.4
+ODM Rod,,,B+,4,Low Tier,1.0,,,,,,,,False,12.4
+Pika Fruit,Pika,Devil Fruit,B+,4,Low Tier,1.0,DROP,False,True,Low Demand,1.0,2.0,6.0,True,18.0
+Snoozy Neko,,,B+,4,Low Tier,1.0,,,,,,,,False,12.4
+Pteranodon Fruit,,,B+,4,Low Tier,1.0,,,,,,,,False,12.4
+Tori Fruit,,,B+,4,Low Tier,1.0,,,,,,,,False,12.4
+Anniversary Lantern,,,B+,4,Low Tier,1.0,,,,,,,,False,12.4
+Elo's Sledgehammer,,,B+,4,Low Tier,1.0,,,,,,,,False,12.4
+Blo's Crimson Sledgehammer,,,B+,4,Low Tier,1.0,,,,,,,,False,12.4
+Legendary Fruit Chest,LC,,B,3,High Tier,3.0,,,,,,,,False,9.3
+Big Mama's Hat,,,B,3,High Tier,3.0,,,,,,,,False,9.3
+Roger's Outfit,,,B,3,High Tier,3.0,,,,,,,,False,9.3
+Rocky Shoulder Pet,,,B,3,High Tier,3.0,,,,,,,,False,9.3
+Cupid's Wand,,,B,3,High Tier,3.0,,,,,,,,False,9.3
+Lovestruck Rod,,,B,3,High Tier,3.0,,,,,,,,False,9.3
+Jester Box,JBOX,,B,3,High Tier,3.0,,,,,,,,False,9.3
+Sunken Helmet,,,B,3,High Tier,3.0,,,,,,,,False,9.3
+Gura Fruit,,,B,3,High Tier,3.0,,,,,,,,False,9.3
+Devil Fruit Journal,,,B,3,High Tier,3.0,,,,,,,,False,9.3
+Goro Fruit,,,B,3,High Tier,3.0,,,,,,,,False,9.3
+Suna Fruit,,,B,3,High Tier,3.0,,,,,,,,False,9.3
+Cupid's Bow,,,B,3,Mid Tier,2.0,,,,,,,,False,9.3
+Cupid's Headband,,,B,3,Mid Tier,2.0,,,,,,,,False,9.3
+Swordfish Rapier,,,B,3,Mid Tier,2.0,,,,,,,,False,9.3
+Zushi Fruit,,,B,3,Mid Tier,2.0,,,,,,,,False,9.3
+Goru Fruit,,,B,3,Mid Tier,2.0,,,,,,,,False,9.3
+Sunken Anchor,,,B,3,Low Tier,1.0,,,,,,,,False,9.3
+Santa's Bells,,,B,3,Low Tier,1.0,,,,,,,,False,9.3
+Iceborn Katana,IBK,,B,3,Low Tier,1.0,,,,,,,,False,9.3
+Iceborn Rapier,,,B,3,Low Tier,1.0,,,,,,,,False,9.3
+Roger's Hat,,,B,3,Low Tier,1.0,,,,,,,,False,9.3
+Boneshiver,,,B,3,Low Tier,1.0,,,,,,,,False,9.3
+Megalodon Helmet,,,B,3,Low Tier,1.0,,,,,,,,False,9.3
+Moria's Necklace,,,B-,2,High Tier,3.0,,,,,,,,False,6.2
+Mera Mera Fruit,,,B-,2,High Tier,3.0,,,,,,,,False,6.2
+Smoke Fruit,,,B-,2,High Tier,3.0,,,,,,,,False,6.2
+Yami Fruit,,,B-,2,High Tier,3.0,,,,,,,,False,6.2
+Yuki Fruit,,,B-,2,High Tier,3.0,,,,,,,,False,6.2
+Kage Fruit,,,B-,2,High Tier,3.0,,,,,,,,False,6.2
+Zorana's Robe,,,B-,2,Mid Tier,2.0,,,,,,,,False,6.2
+Zorana's Haori,,,B-,2,Mid Tier,2.0,,,,,,,,False,6.2
+Titan of Justice's Cape,,,B-,2,Mid Tier,2.0,,,,,,,,False,6.2
+Titan of Justice's Outfit,,,B-,2,Mid Tier,2.0,,,,,,,,False,6.2
+Neptune's Trident,,,B-,2,Mid Tier,2.0,,,,,,,,False,6.2
+Ashen's Cape,,,B-,2,Mid Tier,2.0,,,,,,,,False,6.2
+Trading Sign,,,B-,2,Mid Tier,2.0,,,,,,,,False,6.2
+Radiant Admiral's Cape,,,B-,2,Mid Tier,2.0,,,,,,,,False,6.2
+Radiant Admiral's Outfit,,,B-,2,Mid Tier,2.0,,,,,,,,False,6.2
+Megalodon Armor Set,,,B-,2,Low Tier,1.0,,,,,,,,False,6.2
+Kraken Armor Set,Blue,,B-,2,Low Tier,1.0,,,,,,,,False,6.2
+Kraken Blade,Blue,,B-,2,Low Tier,1.0,,,,,,,,False,6.2
+Resurrected Ba'al's Outfit 2.0,,,B-,2,Low Tier,1.0,,,,,,,,False,6.2
+Donmingo's Outfit,,,B-,2,Low Tier,1.0,,,,,,,,False,6.2
+Turtleback Armor,,,B-,2,Low Tier,1.0,,,,,,,,False,6.2
+Soul King's Tophat,,,B-,2,Low Tier,1.0,,,,,,,,False,6.2
+Turtleback Helmet,,,B-,2,Low Tier,1.0,,,,,,,,False,6.2
+Dark Root,,,F,1,,,,,,,,,,False,3.1
+SP Reset Essence,,,F,1,,,,,,,,,,False,3.1
+Dominus Empyreus,Dominus,Cosmetic,F,1,,,STORE / CREW,False,True,Low Demand,1.0,9.0,0.0,True,13.0
+Sparkle Time Valkyrie,Crew Store,,F,1,,,,,,,,,,False,3.1
+Emerald Valkyrie,Crew Store,,F,1,,,,,,,,,,False,3.1
+Ice Valkyrie,Crew Store,,F,1,,,,,,,,,,False,3.1
+Violet Valkyrie,Crew Store,,F,1,,,,,,,,,,False,3.1
+Blackvalk,Crew Store,,F,1,,,,,,,,,,False,3.1
